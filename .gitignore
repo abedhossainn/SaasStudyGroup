@@ -67,3 +67,6 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# Ignore Firebase credentials
+studygroupcollab-firebase-adminsdk-fbsvc-425d537b10.json
