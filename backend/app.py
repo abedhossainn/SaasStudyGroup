@@ -9,11 +9,13 @@ def home():
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
 
-import firebase_admin
-from firebase_admin import credentials, auth
+import os
+import json
+from firebase_admin import credentials, initialize_app
 
-cred = credentials.Certificate("/workspaces/SaasStudyGroup/studygroupcollab-firebase-adminsdk-fbsvc-425d537b10.json")
-firebase_admin.initialize_app(cred)
+firebase_credentials = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
+cred = credentials.Certificate(firebase_credentials)
+initialize_app(cred)
 
 @app.route("/verify-token", methods=["POST"])
 def verify_token():
