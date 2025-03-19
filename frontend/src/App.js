@@ -29,7 +29,7 @@ function App() {
   const [message, setMessage] = useState("Loading...");
 
   useEffect(() => {
-    fetch("https://your-backend.onrender.com/") // Replace with your actual backend URL
+    fetch("https://saasstudygroup.onrender.com") // Replace with your actual backend URL
       .then((response) => response.text())
       .then((data) => setMessage(data))
       .catch((error) => setMessage("Error connecting to backend"));
