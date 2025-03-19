@@ -70,3 +70,4 @@ node_modules/
 
 # Ignore Firebase credentials
 studygroupcollab-firebase-adminsdk-fbsvc-425d537b10.jsonstudygroupcollab-firebase-adminsdk-fbsvc-425d537b10.json
+backend/studygroupcollab-firebase-adminsdk-*.json
