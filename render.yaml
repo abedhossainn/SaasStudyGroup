@@ -3,7 +3,7 @@ services:
     name: studygroup-backend
     env: node
     root: backend
-    buildCommand: npm install && npm run build
+    buildCommand: npm --prefix backend install && npm --prefix backend run build
     startCommand: node server.js
     envVars:
       - key: PORT
@@ -13,7 +13,7 @@ services:
     name: studygroup-frontend
     env: node
     buildCommand: npm install && npm run build
-    startCommand: serve -s build
+    startCommand: npx serve -s build
     envVars:
       - key: REACT_APP_API_URL
         value: https://studygroup-backend.onrender.com
