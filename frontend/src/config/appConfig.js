@@ -1,5 +1,5 @@
 // Configuration to toggle between mock and real backend
-export const USE_MOCK_API = true; // Set to false to use Firebase backend
+export const USE_MOCK_API = false; // Set to false to use Firebase backend
 
 // && backend changes
 // 1. Set this to false when integrating with Firebase
