@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: studygroup-backend
+    env: node
+    buildCommand: cd backend && npm install && npm run build
+    startCommand: cd backend && node server.js
+    envVars:
+      - key: PORT
+        value: 5000
+
+  - type: web
+    name: studygroup-frontend
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: serve -s build
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://studygroup-backend.onrender.com
