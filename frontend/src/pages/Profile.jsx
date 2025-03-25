@@ -39,7 +39,11 @@ export default function Profile() {
   const [previewImage, setPreviewImage] = useState(null);
 
   useEffect(() => {
-    fetchProfile();
+    if (currentUser?.id) {
+      fetchProfile();
+    } else {
+      setLoading(false);
+    }
   }, [currentUser]);
 
   const fetchProfile = async () => {
@@ -47,21 +51,21 @@ export default function Profile() {
       const profileData = await getUserProfile(currentUser.id);
       setProfile(profileData);
       setEditForm({
-        name: profileData.name || '',
-        bio: profileData.bio || '',
-        avatar: null
+        name: profileData?.name || '',
+        bio: profileData?.bio || '',
+        avatar: profileData?.avatar || null
       });
-      
+      setPreviewImage(profileData?.avatar || null);
+
       // Fetch joined groups
       const groups = await getGroups();
       const userGroups = groups.filter(group => 
         group.members.includes(currentUser.id)
       );
       setJoinedGroups(userGroups);
-      
-      setLoading(false);
     } catch (error) {
       console.error('Error fetching profile:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -69,8 +73,8 @@ export default function Profile() {
   const handleEdit = () => {
     setEditing(true);
     setEditForm({
-      name: profile.name || '',
-      bio: profile.bio || '',
+      name: profile?.name || '',
+      bio: profile?.bio || '',
       avatar: null
     });
   };
@@ -93,7 +97,7 @@ export default function Profile() {
       setSaving(true);
       const updatedProfile = await updateProfile(currentUser.id, {
         ...editForm,
-        avatar: editForm.avatar || profile.avatar
+        avatar: editForm.avatar || profile?.avatar
       });
       setProfile(updatedProfile);
       setEditing(false);
@@ -107,8 +111,16 @@ export default function Profile() {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh' }}>
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <Box textAlign="center" p={4}>
+        <Typography variant="h5">Please log in to view your profile</Typography>
       </Box>
     );
   }
@@ -121,7 +133,7 @@ export default function Profile() {
           <Grid item xs={12} md={4} sx={{ textAlign: 'center' }}>
             <Box sx={{ position: 'relative', display: 'inline-block' }}>
               <Avatar
-                src={previewImage || profile.avatar}
+                src={previewImage || profile?.avatar}
                 sx={{
                   width: 200,
                   height: 200,
@@ -207,13 +219,13 @@ export default function Profile() {
             ) : (
               <Box>
                 <Typography variant="h6" gutterBottom>
-                  {profile.name}
+                  {profile?.name}
                 </Typography>
                 <Typography color="text.secondary" paragraph>
-                  {profile.bio || 'No bio added yet'}
+                  {profile?.bio || 'No bio added yet'}
                 </Typography>
                 <Typography variant="subtitle1" gutterBottom>
-                  Email: {profile.email}
+                  Email: {profile?.email}
                 </Typography>
               </Box>
             )}

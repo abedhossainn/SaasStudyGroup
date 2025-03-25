@@ -12,6 +12,7 @@ import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import GroupDetails from './pages/GroupDetails';
+import { useAuth } from './contexts/AuthContext';
 
 // Custom theme settings
 const getThemeSettings = (mode) => ({
@@ -105,13 +106,39 @@ const getThemeSettings = (mode) => ({
   },
 });
 
-export default function App() {
-  const [mode, setMode] = useState('light');
+// Protected Route Component
+const ProtectedRoute = ({ children }) => {
+  const { currentUser, loading } = useAuth();
+  
+  if (loading) {
+    return null; // or a loading spinner
+  }
+  
+  if (!currentUser) {
+    return <Navigate to="/login" />;
+  }
 
-  const theme = useMemo(
-    () => createTheme(getThemeSettings(mode)),
-    [mode]
-  );
+  return children;
+};
+
+// Public Route Component (redirects to dashboard if logged in)
+const PublicRoute = ({ children }) => {
+  const { currentUser, loading } = useAuth();
+  
+  if (loading) {
+    return null; // or a loading spinner
+  }
+  
+  if (currentUser) {
+    return <Navigate to="/dashboard" />;
+  }
+
+  return children;
+};
+
+function App() {
+  const [mode, setMode] = useState('light');
+  const theme = useMemo(() => createTheme(getThemeSettings(mode)), [mode]);
 
   const toggleTheme = () => {
     setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
@@ -120,15 +147,22 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AuthProvider>
-        <Router>
+      <Router>
+        <AuthProvider>
           <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route
-              path="/"
-              element={<Layout toggleTheme={toggleTheme} mode={mode} />}
-            >
-              <Route index element={<Dashboard />} />
+            <Route path="/login" element={
+              <PublicRoute>
+                <Login />
+              </PublicRoute>
+            } />
+            
+            <Route path="/" element={
+              <ProtectedRoute>
+                <Layout toggleTheme={toggleTheme} mode={mode} />
+              </ProtectedRoute>
+            }>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<Dashboard />} />
               <Route path="messages" element={<Messages />} />
               <Route path="calendar" element={<Calendar />} />
               <Route path="notifications" element={<Notifications />} />
@@ -136,10 +170,13 @@ export default function App() {
               <Route path="settings" element={<Settings />} />
               <Route path="group/:groupId" element={<GroupDetails />} />
             </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
+
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
-        </Router>
-      </AuthProvider>
+        </AuthProvider>
+      </Router>
     </ThemeProvider>
   );
 }
+
+export default App;
