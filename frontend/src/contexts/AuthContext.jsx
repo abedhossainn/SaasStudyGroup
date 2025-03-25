@@ -4,9 +4,11 @@ import {
   signInWithPopup, 
   GoogleAuthProvider,
   signOut,
-  onAuthStateChanged 
+  onAuthStateChanged,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
-import { auth } from '../firebase';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 import { mockApi } from '../services/mockApi';
 import { USE_MOCK_API } from '../config/appConfig';
 
@@ -24,6 +26,37 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Signup with email/password
+  const signup = async (email, password, displayName) => {
+    if (USE_MOCK_API) {
+      try {
+        const user = await mockApi.signup(email, password);
+        setCurrentUser(user);
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        return user;
+      } catch (error) {
+        throw new Error(error.message);
+      }
+    } else {
+      try {
+        // Create the user in Firebase Auth
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        
+        // Create user profile in Firestore
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          email,
+          displayName,
+          createdAt: serverTimestamp(),
+          photoURL: null,
+        });
+
+        return userCredential.user;
+      } catch (error) {
+        throw new Error('Failed to create account: ' + error.message);
+      }
+    }
+  };
+
   // Login with email/password
   const login = async (email, password) => {
     if (USE_MOCK_API) {
@@ -38,7 +71,18 @@ export function AuthProvider({ children }) {
     } else {
       try {
         const result = await signInWithEmailAndPassword(auth, email, password);
-        return result.user;
+        // Get additional user data from Firestore
+        const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+        const userData = userDoc.data();
+        
+        // Merge auth and Firestore data
+        const enrichedUser = {
+          ...result.user,
+          ...userData
+        };
+        
+        setCurrentUser(enrichedUser);
+        return enrichedUser;
       } catch (error) {
         throw new Error('Failed to login: ' + error.message);
       }
@@ -65,7 +109,18 @@ export function AuthProvider({ children }) {
       try {
         const provider = new GoogleAuthProvider();
         const result = await signInWithPopup(auth, provider);
-        return result.user;
+        // Get additional user data from Firestore
+        const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+        const userData = userDoc.data();
+        
+        // Merge auth and Firestore data
+        const enrichedUser = {
+          ...result.user,
+          ...userData
+        };
+        
+        setCurrentUser(enrichedUser);
+        return enrichedUser;
       } catch (error) {
         throw new Error('Failed to sign in with Google: ' + error.message);
       }
@@ -99,7 +154,22 @@ export function AuthProvider({ children }) {
       setLoading(false);
     } else {
       unsubscribe = onAuthStateChanged(auth, (user) => {
-        setCurrentUser(user);
+        if (user) {
+          // Get additional user data from Firestore
+          getDoc(doc(db, 'users', user.uid)).then((userDoc) => {
+            const userData = userDoc.data();
+            
+            // Merge auth and Firestore data
+            const enrichedUser = {
+              ...user,
+              ...userData
+            };
+            
+            setCurrentUser(enrichedUser);
+          });
+        } else {
+          setCurrentUser(null);
+        }
         setLoading(false);
       });
     }
@@ -112,7 +182,8 @@ export function AuthProvider({ children }) {
     login,
     googleSignIn,
     logout,
-    loading
+    loading,
+    signup
   };
 
   return (
