@@ -14,41 +14,145 @@ import {
   Grid
 } from '@mui/material';
 import { Send as SendIcon } from '@mui/icons-material';
-import { mockApi } from '../services/mockApi';
+
+import { db, auth } from '../firebase';
+import {
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+  addDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { formatDistanceToNow } from 'date-fns';
+import { doc, updateDoc } from 'firebase/firestore';
 
 export default function Messages() {
+  const [allUsers, setAllUsers] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
-  const [selectedUser, setSelectedUser] = useState(null);
+
+  const currentUserId = auth.currentUser?.uid;
 
   useEffect(() => {
-    const fetchMessages = async () => {
-      try {
-        const messagesData = await mockApi.getMessages();
-        setMessages(messagesData);
-      } catch (error) {
-        console.error('Error fetching messages:', error);
+    if (!currentUserId) return;
+  
+    const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const fetchedUsers = snapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          name: doc.data().displayName,
+          avatar: doc.data().photoURL || '',
+        }))
+        .filter(user => user.id !== currentUserId);
+  
+      setAllUsers(fetchedUsers);
+    });
+  
+    return () => unsubscribe();
+  }, [currentUserId]);
+
+  // Real-time message updates between current and selected user
+  useEffect(() => {
+    if (!currentUserId || allUsers.length === 0) return;
+  
+    const q = query(collection(db, 'messages'), orderBy('timestamp', 'desc'));
+  
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  
+      // Find the most recent message involving this user
+      const lastMessage = msgs.find(msg =>
+        msg.senderId === currentUserId || msg.to === currentUserId
+      );
+  
+      if (lastMessage) {
+        // Identify the other user
+        const otherUserId = lastMessage.senderId === currentUserId
+          ? lastMessage.to
+          : lastMessage.senderId;
+  
+        // Find that user in the allUsers list
+        const chatPartner = allUsers.find(user => user.id === otherUserId);
+  
+        if (chatPartner) {
+          setSelectedUser(chatPartner);
+        }
       }
-    };
-    fetchMessages();
-  }, []);
+    });
+  
+    return () => unsubscribe();
+  }, [currentUserId, allUsers]);
+
+  useEffect(() => {
+    if (!selectedUser || !currentUserId) return;
+  
+    const q = query(collection(db, 'messages'), orderBy('timestamp'));
+  
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+      const filteredMsgs = msgs.filter(msg =>
+        (msg.senderId === currentUserId && msg.to === selectedUser.id) ||
+        (msg.senderId === selectedUser.id && msg.to === currentUserId)
+      );
+    
+      setMessages(filteredMsgs);
+    
+      // 🔥 Mark unread messages as seen
+      msgs.forEach((msg) => {
+        if (
+          msg.senderId === selectedUser.id &&
+          msg.to === currentUserId &&
+          !msg.seen
+        ) {
+          const msgRef = doc(db, 'messages', msg.id);
+          updateDoc(msgRef, { seen: true });
+        }
+      });
+    });
+  
+    return () => unsubscribe();
+  }, [selectedUser, currentUserId]);  
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedUser) return;
+    if (!newMessage.trim() || !selectedUser || !currentUserId) return;
 
     try {
-      const newMsg = await mockApi.sendMessage({
+      await addDoc(collection(db, 'messages'), {
         text: newMessage,
-        from: 1, // Current user ID
+        senderId: currentUserId,
+        senderName: auth.currentUser.displayName || '', // fallback just in case
         to: selectedUser.id,
-        timestamp: new Date().toISOString()
+        timestamp: serverTimestamp(),
       });
-      setMessages([...messages, newMsg]);
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
     }
+  };
+
+  const handleTyping = () => {
+    if (!auth.currentUser || !selectedUser) return;
+  
+    const userRef = doc(db, 'users', auth.currentUser.uid);
+  
+    // Set typingTo to the selected user
+    updateDoc(userRef, {
+      typingTo: selectedUser.id
+    });
+  
+    // Clear after 2 seconds of inactivity
+    clearTimeout(window.typingTimeout);
+    window.typingTimeout = setTimeout(() => {
+      updateDoc(userRef, {
+        typingTo: null
+      });
+    }, 2000);
   };
 
   return (
@@ -66,30 +170,53 @@ export default function Messages() {
                 size="small"
                 fullWidth
                 placeholder="Search contacts..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
             </Box>
             <Divider />
             <List sx={{ overflow: 'auto', maxHeight: 'calc(70vh - 70px)' }}>
-              {[
-                { id: 2, name: 'George Alan', avatar: 'https://i.pravatar.cc/150?img=2' },
-                { id: 3, name: 'Safiya Fareena', avatar: 'https://i.pravatar.cc/150?img=3' },
-                { id: 4, name: 'Robert Allen', avatar: 'https://i.pravatar.cc/150?img=4' }
-              ].map((user) => (
-                <ListItem
-                  key={user.id}
-                  button
-                  selected={selectedUser?.id === user.id}
-                  onClick={() => setSelectedUser(user)}
-                >
-                  <ListItemAvatar>
-                    <Avatar src={user.avatar} alt={user.name} />
-                  </ListItemAvatar>
-                  <ListItemText
-                    primary={user.name}
-                    secondary="Click to view conversation"
-                  />
-                </ListItem>
-              ))}
+              {allUsers
+                .filter(user =>
+                  user.name?.toLowerCase().includes(searchQuery.toLowerCase())
+                )
+                .map((user) => (
+                  <ListItem
+                    key={user.id}
+                    button
+                    selected={selectedUser?.id === user.id}
+                    onClick={() => setSelectedUser(user)}
+                  >
+                    <ListItemAvatar>
+                      <Avatar src={user.avatar} alt={user.name}>
+                        {!user.avatar && user.name?.[0]}
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={
+                        <Box display="flex" alignItems="center" gap={1}>
+                          {user.name}
+                          <Box
+                            sx={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              backgroundColor: user.status === 'online' ? 'green' : 'gray',
+                              mt: '2px'
+                            }}
+                          />
+                        </Box>
+                      }
+                      secondary={
+                        user.status === 'online'
+                          ? 'Online'
+                          : user.lastSeen
+                            ? `Last seen ${formatDistanceToNow(user.lastSeen.toDate())} ago`
+                            : 'Offline'
+                      }
+                    />
+                  </ListItem>
+                ))}
             </List>
           </Paper>
         </Grid>
@@ -100,40 +227,64 @@ export default function Messages() {
             {selectedUser ? (
               <>
                 <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-                  <Typography variant="h6">
-                    {selectedUser.name}
+                  <Typography variant="h6">{selectedUser.name}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedUser.typingTo === currentUserId
+                      ? 'Typing...'
+                      : selectedUser.status === 'online'
+                        ? 'Online'
+                        : selectedUser.lastSeen
+                          ? `Last seen ${formatDistanceToNow(selectedUser.lastSeen.toDate())} ago`
+                        : 'Offline'}
                   </Typography>
                 </Box>
 
                 <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
-                  {messages
-                    .filter(msg => 
-                      (msg.from === 1 && msg.to === selectedUser.id) ||
-                      (msg.from === selectedUser.id && msg.to === 1)
-                    )
-                    .map((msg) => (
+                  {messages.map((msg, index) => (
+                    <Box key={msg.id}>
                       <Box
-                        key={msg.id}
                         sx={{
                           display: 'flex',
-                          justifyContent: msg.from === 1 ? 'flex-end' : 'flex-start',
-                          mb: 1
+                          justifyContent:
+                            msg.senderId === currentUserId ? 'flex-end' : 'flex-start',
+                          mb: 1,
                         }}
                       >
                         <Paper
                           sx={{
                             p: 1,
-                            backgroundColor: msg.from === 1 ? 'primary.light' : 'grey.100',
-                            maxWidth: '70%'
+                            backgroundColor:
+                              msg.senderId === currentUserId ? 'primary.light' : 'grey.100',
+                            maxWidth: '70%',
                           }}
                         >
                           <Typography variant="body2">{msg.text}</Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {new Date(msg.timestamp).toLocaleTimeString()}
+                            {msg.timestamp?.toDate().toLocaleTimeString()}
                           </Typography>
                         </Paper>
                       </Box>
-                    ))}
+
+                      {/* 👁️ Seen indicator for last message sent by current user */}
+                      {index === messages.length - 1 &&
+                        msg.senderId === currentUserId &&
+                        msg.seen && (
+                          <Box sx={{ display: 'flex', justifyContent: 'flex-end', pr: 1 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: 'text.secondary',
+                                fontStyle: 'italic',
+                                fontSize: '0.75rem',
+                                mt: '-4px',
+                              }}
+                            >
+                              Seen
+                            </Typography>
+                          </Box>
+                      )}
+                    </Box>
+                  ))}
                 </Box>
 
                 <Box
@@ -144,7 +295,7 @@ export default function Messages() {
                     borderTop: 1,
                     borderColor: 'divider',
                     display: 'flex',
-                    gap: 1
+                    gap: 1,
                   }}
                 >
                   <TextField
@@ -152,7 +303,10 @@ export default function Messages() {
                     fullWidth
                     placeholder="Type a message..."
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    onChange={(e) => {
+                      setNewMessage(e.target.value);
+                      handleTyping();
+                    }}
                   />
                   <IconButton color="primary" type="submit">
                     <SendIcon />
@@ -165,7 +319,7 @@ export default function Messages() {
                   height: '100%',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
                 }}
               >
                 <Typography color="text.secondary">

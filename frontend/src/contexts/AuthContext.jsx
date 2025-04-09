@@ -1,16 +1,20 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  signInWithEmailAndPassword, 
-  signInWithPopup, 
+import {
+  signInWithEmailAndPassword,
+  signInWithPopup,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
   createUserWithEmailAndPassword
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc,
+  serverTimestamp
+} from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { mockApi } from '../services/mockApi';
-import { USE_MOCK_API } from '../config/appConfig';
 
 const AuthContext = createContext(null);
 
@@ -28,151 +32,133 @@ export function AuthProvider({ children }) {
 
   // Signup with email/password
   const signup = async (email, password, displayName) => {
-    if (USE_MOCK_API) {
-      try {
-        const user = await mockApi.signup(email, password);
-        setCurrentUser(user);
-        localStorage.setItem('currentUser', JSON.stringify(user));
-        return user;
-      } catch (error) {
-        throw new Error(error.message);
-      }
-    } else {
-      try {
-        // Create the user in Firebase Auth
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        
-        // Create user profile in Firestore
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-          email,
-          displayName,
-          createdAt: serverTimestamp(),
-          photoURL: null,
-        });
-
-        return userCredential.user;
-      } catch (error) {
-        throw new Error('Failed to create account: ' + error.message);
-      }
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await setDoc(doc(db, 'users', userCredential.user.uid), {
+        email,
+        displayName,
+        createdAt: serverTimestamp(),
+        photoURL: null,
+        status: 'online',
+        lastSeen: serverTimestamp(),
+      });
+      return userCredential.user;
+    } catch (error) {
+      throw new Error('Failed to create account: ' + error.message);
     }
   };
 
   // Login with email/password
   const login = async (email, password) => {
-    if (USE_MOCK_API) {
-      try {
-        const user = await mockApi.login(email, password);
-        setCurrentUser(user);
-        localStorage.setItem('currentUser', JSON.stringify(user));
-        return user;
-      } catch (error) {
-        throw new Error(error.message);
-      }
-    } else {
-      try {
-        const result = await signInWithEmailAndPassword(auth, email, password);
-        // Get additional user data from Firestore
-        const userDoc = await getDoc(doc(db, 'users', result.user.uid));
-        const userData = userDoc.data();
-        
-        // Merge auth and Firestore data
-        const enrichedUser = {
-          ...result.user,
-          ...userData
-        };
-        
-        setCurrentUser(enrichedUser);
-        return enrichedUser;
-      } catch (error) {
-        throw new Error('Failed to login: ' + error.message);
-      }
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      const userRef = doc(db, 'users', result.user.uid);
+      const userDoc = await getDoc(userRef);
+      const userData = userDoc.data();
+
+      await updateDoc(userRef, {
+        status: 'online',
+        lastSeen: serverTimestamp()
+      });
+
+      const enrichedUser = {
+        ...result.user,
+        ...userData
+      };
+
+      setCurrentUser(enrichedUser);
+      return enrichedUser;
+    } catch (error) {
+      throw new Error('Failed to login: ' + error.message);
     }
   };
 
   // Google Sign In
   const googleSignIn = async () => {
-    if (USE_MOCK_API) {
-      try {
-        const user = {
-          id: 'google_123',
-          name: 'Google User',
-          email: 'google@example.com',
-          avatar: '/avatars/google-avatar.png'
-        };
-        setCurrentUser(user);
-        localStorage.setItem('currentUser', JSON.stringify(user));
-        return user;
-      } catch (error) {
-        throw new Error('Failed to sign in with Google');
-      }
-    } else {
-      try {
-        const provider = new GoogleAuthProvider();
-        const result = await signInWithPopup(auth, provider);
-        // Get additional user data from Firestore
-        const userDoc = await getDoc(doc(db, 'users', result.user.uid));
-        const userData = userDoc.data();
-        
-        // Merge auth and Firestore data
-        const enrichedUser = {
-          ...result.user,
-          ...userData
-        };
-        
-        setCurrentUser(enrichedUser);
-        return enrichedUser;
-      } catch (error) {
-        throw new Error('Failed to sign in with Google: ' + error.message);
-      }
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const userRef = doc(db, 'users', result.user.uid);
+      const userDoc = await getDoc(userRef);
+      const userData = userDoc.data();
+
+      await updateDoc(userRef, {
+        status: 'online',
+        lastSeen: serverTimestamp()
+      });
+
+      const enrichedUser = {
+        ...result.user,
+        ...userData
+      };
+
+      setCurrentUser(enrichedUser);
+      return enrichedUser;
+    } catch (error) {
+      throw new Error('Failed to sign in with Google: ' + error.message);
     }
   };
 
   // Logout
   const logout = async () => {
-    if (USE_MOCK_API) {
+    try {
+      const userRef = doc(db, 'users', auth.currentUser.uid);
+      await updateDoc(userRef, {
+        status: 'offline',
+        lastSeen: serverTimestamp()
+      });
+      await signOut(auth);
       setCurrentUser(null);
-      localStorage.removeItem('currentUser');
-    } else {
-      try {
-        await signOut(auth);
-        setCurrentUser(null);
-      } catch (error) {
-        throw new Error('Failed to logout: ' + error.message);
-      }
+    } catch (error) {
+      throw new Error('Failed to logout: ' + error.message);
     }
   };
 
-  // Check authentication state
+  // Check authentication state and handle online/offline status
   useEffect(() => {
-    let unsubscribe = () => {};
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const userRef = doc(db, 'users', user.uid);
 
-    if (USE_MOCK_API) {
-      const storedUser = localStorage.getItem('currentUser');
-      if (storedUser) {
-        setCurrentUser(JSON.parse(storedUser));
+        // Set status to online
+        updateDoc(userRef, {
+          status: 'online',
+          lastSeen: serverTimestamp()
+        });
+
+        // Fetch additional user data
+        getDoc(userRef).then((userDoc) => {
+          const userData = userDoc.data();
+          const enrichedUser = {
+            ...user,
+            ...userData
+          };
+          setCurrentUser(enrichedUser);
+        });
+
+        // Handle offline on unload
+        const handleOffline = async () => {
+          await updateDoc(userRef, {
+            status: 'offline',
+            lastSeen: serverTimestamp()
+          });
+        };
+
+        window.addEventListener('beforeunload', handleOffline);
+        window.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'hidden') handleOffline();
+          if (document.visibilityState === 'visible') {
+            updateDoc(userRef, {
+              status: 'online',
+              lastSeen: serverTimestamp()
+            });
+          }
+        });
+      } else {
+        setCurrentUser(null);
       }
       setLoading(false);
-    } else {
-      unsubscribe = onAuthStateChanged(auth, (user) => {
-        if (user) {
-          // Get additional user data from Firestore
-          getDoc(doc(db, 'users', user.uid)).then((userDoc) => {
-            const userData = userDoc.data();
-            
-            // Merge auth and Firestore data
-            const enrichedUser = {
-              ...user,
-              ...userData
-            };
-            
-            setCurrentUser(enrichedUser);
-          });
-        } else {
-          setCurrentUser(null);
-        }
-        setLoading(false);
-      });
-    }
+    });
 
     return () => unsubscribe();
   }, []);
