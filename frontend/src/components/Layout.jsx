@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -18,7 +18,6 @@ import {
   Badge,
   useTheme,
   useMediaQuery,
-  Switch,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -32,6 +31,13 @@ import {
   CalendarMonth as CalendarIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { db} from '../firebase';
+import {
+  collection,
+  query,
+  onSnapshot,
+  where
+} from 'firebase/firestore';
 
 const drawerWidth = 240;
 
@@ -44,6 +50,25 @@ export default function Layout({ toggleTheme, mode }) {
 
   const [open, setOpen] = useState(!isMobile);
   const [anchorEl, setAnchorEl] = useState(null);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [notificationCount] = useState(5); // Keeping the hardcoded value for now
+
+  // Effect to track unread messages
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+
+    const q = query(
+      collection(db, 'messages'),
+      where('to', '==', currentUser.uid),
+      where('seen', '==', false)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setUnreadMessageCount(snapshot.docs.length);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
 
   const handleDrawerToggle = () => {
     setOpen(!open);
@@ -69,8 +94,18 @@ export default function Layout({ toggleTheme, mode }) {
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
-    { text: 'Messages', icon: <MessageIcon />, path: '/messages', badge: 3 },
-    { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications', badge: 5 },
+    { 
+      text: 'Messages', 
+      icon: <MessageIcon />, 
+      path: '/messages', 
+      badge: unreadMessageCount > 0 ? unreadMessageCount : null 
+    },
+    { 
+      text: 'Notifications', 
+      icon: <NotificationsIcon />, 
+      path: '/notifications', 
+      badge: notificationCount > 0 ? notificationCount : null 
+    },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
   ];
 
@@ -105,6 +140,20 @@ export default function Layout({ toggleTheme, mode }) {
           <Box sx={{ flexGrow: 1 }} />
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {/* Message notification in toolbar */}
+            <IconButton color="inherit" onClick={() => navigate('/messages')}>
+              <Badge badgeContent={unreadMessageCount} color="error">
+                <MessageIcon />
+              </Badge>
+            </IconButton>
+            
+            {/* Notification icon in toolbar */}
+            <IconButton color="inherit" onClick={() => navigate('/notifications')}>
+              <Badge badgeContent={notificationCount} color="error">
+                <NotificationsIcon />
+              </Badge>
+            </IconButton>
+            
             <IconButton color="inherit" onClick={toggleTheme}>
               {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
             </IconButton>
@@ -219,7 +268,15 @@ export default function Layout({ toggleTheme, mode }) {
                     item.icon
                   )}
                 </ListItemIcon>
-                {open && <ListItemText primary={item.text} />}
+                {open && (
+                  item.badge ? (
+                    <Badge badgeContent={item.badge} color="error" sx={{ width: '100%' }}>
+                      <ListItemText primary={item.text} />
+                    </Badge>
+                  ) : (
+                    <ListItemText primary={item.text} />
+                  )
+                )}
               </ListItem>
             ))}
           </List>
