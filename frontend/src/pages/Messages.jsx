@@ -37,6 +37,7 @@ export default function Messages() {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [unreadCounts, setUnreadCounts] = useState({});
+  const [lastMessages, setLastMessages] = useState({});
   const chatEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const currentUserId = auth.currentUser?.uid;
@@ -80,17 +81,34 @@ export default function Messages() {
     
       // Count unread messages per sender
       const unreadMap = {};
+      const lastMsgsMap = {};
+      
+      // Group messages by conversation
       msgs.forEach(msg => {
-        if (
-          msg.to === currentUserId &&
-          !msg.seen &&
-          msg.senderId
-        ) {
+        // Skip messages without timestamp
+        if (!msg.timestamp) return;
+        
+        // Determine the other user in the conversation
+        const otherUserId = msg.senderId === currentUserId ? msg.to : msg.senderId;
+        
+        // Count unread messages
+        if (msg.to === currentUserId && !msg.seen && msg.senderId) {
           unreadMap[msg.senderId] = (unreadMap[msg.senderId] || 0) + 1;
+        }
+        
+        // Track the last message for each conversation
+        if (!lastMsgsMap[otherUserId] && 
+            (msg.senderId === currentUserId || msg.to === currentUserId)) {
+          lastMsgsMap[otherUserId] = {
+            text: msg.text,
+            timestamp: msg.timestamp,
+            isFromMe: msg.senderId === currentUserId
+          };
         }
       });
       
       setUnreadCounts(unreadMap);
+      setLastMessages(lastMsgsMap);
     });
     
     return () => unsubscribe();
@@ -227,6 +245,22 @@ export default function Messages() {
     }, 2000);
   };
 
+  // Format the last message preview text
+  const formatLastMessagePreview = (userId) => {
+    const lastMsg = lastMessages[userId];
+    if (!lastMsg) return "No messages yet";
+    
+    const prefix = lastMsg.isFromMe ? "You: " : "";
+    let text = lastMsg.text;
+    
+    // Truncate long messages
+    if (text.length > 25) {
+      text = text.substring(0, 25) + "...";
+    }
+    
+    return prefix + text;
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
@@ -289,13 +323,7 @@ export default function Messages() {
                           />
                         </Box>
                       }
-                      secondary={
-                        user.status === 'online'
-                          ? 'Online'
-                          : user.lastSeen
-                            ? `Last seen ${formatDistanceToNow(user.lastSeen.toDate())} ago`
-                            : 'Offline'
-                      }
+                      secondary={formatLastMessagePreview(user.id)}
                     />
                   </ListItem>
                 ))}
