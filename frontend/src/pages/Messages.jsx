@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Paper,
@@ -11,7 +11,8 @@ import {
   TextField,
   IconButton,
   Divider,
-  Grid
+  Grid,
+  Badge
 } from '@mui/material';
 import { Send as SendIcon } from '@mui/icons-material';
 
@@ -23,9 +24,11 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
+  doc,
+  updateDoc,
 } from 'firebase/firestore';
 import { formatDistanceToNow } from 'date-fns';
-import { doc, updateDoc } from 'firebase/firestore';
+import { useSnackbar } from 'notistack';
 
 export default function Messages() {
   const [allUsers, setAllUsers] = useState([]);
@@ -33,12 +36,19 @@ export default function Messages() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
-
+  const [unreadCounts, setUnreadCounts] = useState({});
+  const chatEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const currentUserId = auth.currentUser?.uid;
+  const { enqueueSnackbar } = useSnackbar();
+  const hasAutoSelectedRef = useRef(false);
+  
+  // Flag to track if we need to scroll to bottom
+  const shouldScrollToBottomRef = useRef(false);
 
   useEffect(() => {
     if (!currentUserId) return;
-  
+
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       const fetchedUsers = snapshot.docs
         .map(doc => ({
@@ -48,61 +58,123 @@ export default function Messages() {
           avatar: doc.data().photoURL || '',
         }))
         .filter(user => user.id !== currentUserId);
-  
+
       setAllUsers(fetchedUsers);
     });
-  
+
     return () => unsubscribe();
   }, [currentUserId]);
 
-  // Real-time message updates between current and selected user
+  // Separate effect for tracking unread message counts
   useEffect(() => {
-    if (!currentUserId || allUsers.length === 0) return;
+    if (!currentUserId) return;
+    
+    // This is a general listener for all messages to count unread ones
+    const q = query(collection(db, 'messages'), orderBy('timestamp', 'desc'));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+    
+      // Count unread messages per sender
+      const unreadMap = {};
+      msgs.forEach(msg => {
+        if (
+          msg.to === currentUserId &&
+          !msg.seen &&
+          msg.senderId
+        ) {
+          unreadMap[msg.senderId] = (unreadMap[msg.senderId] || 0) + 1;
+        }
+      });
+      
+      setUnreadCounts(unreadMap);
+    });
+    
+    return () => unsubscribe();
+  }, [currentUserId]);
+
+  // Auto-select the first chat if none selected
+  useEffect(() => {
+    if (!currentUserId || allUsers.length === 0 || hasAutoSelectedRef.current) return;
   
     const q = query(collection(db, 'messages'), orderBy('timestamp', 'desc'));
   
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const msgs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
   
-      // Find the most recent message involving this user
-      const lastMessage = msgs.find(msg =>
-        msg.senderId === currentUserId || msg.to === currentUserId
-      );
+      // Only auto-select chat if it hasn't been done yet
+      if (!hasAutoSelectedRef.current && !selectedUser) {
+        const lastMessage = msgs.find(msg =>
+          msg.senderId === currentUserId || msg.to === currentUserId
+        );
   
-      if (lastMessage) {
-        // Identify the other user
-        const otherUserId = lastMessage.senderId === currentUserId
-          ? lastMessage.to
-          : lastMessage.senderId;
+        if (lastMessage) {
+          const otherUserId = lastMessage.senderId === currentUserId
+            ? lastMessage.to
+            : lastMessage.senderId;
   
-        // Find that user in the allUsers list
-        const chatPartner = allUsers.find(user => user.id === otherUserId);
+          const chatPartner = allUsers.find(user => user.id === otherUserId);
   
-        if (chatPartner) {
-          setSelectedUser(chatPartner);
+          if (chatPartner) {
+            setSelectedUser(chatPartner);
+            shouldScrollToBottomRef.current = true; // Flag to scroll on first load
+            hasAutoSelectedRef.current = true; // prevents re-selection
+          }
         }
       }
     });
   
     return () => unsubscribe();
-  }, [currentUserId, allUsers]);
+  }, [currentUserId, selectedUser, allUsers, enqueueSnackbar]);
 
+  // Set flag to scroll to bottom whenever selectedUser changes
+  useEffect(() => {
+    if (selectedUser) {
+      shouldScrollToBottomRef.current = true;
+    }
+  }, [selectedUser]);
+
+  // Load and filter messages for the selected chat
   useEffect(() => {
     if (!selectedUser || !currentUserId) return;
-  
-    const q = query(collection(db, 'messages'), orderBy('timestamp'));
-  
+
+    const q = query(
+      collection(db, 'messages'),
+      orderBy('timestamp', 'asc')
+    );
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    
-      const filteredMsgs = msgs.filter(msg =>
-        (msg.senderId === currentUserId && msg.to === selectedUser.id) ||
-        (msg.senderId === selectedUser.id && msg.to === currentUserId)
-      );
-    
-      setMessages(filteredMsgs);
-    
-      // 🔥 Mark unread messages as seen
+      const msgs = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(msg => 
+          (msg.senderId === currentUserId && msg.to === selectedUser.id) ||
+          (msg.senderId === selectedUser.id && msg.to === currentUserId)
+        );
+      
+      setMessages(msgs);
+
+      // Scroll to bottom when messages change
+      if (shouldScrollToBottomRef.current && chatEndRef.current) {
+        setTimeout(() => {
+          chatEndRef.current.scrollIntoView({ behavior: 'auto' });
+          shouldScrollToBottomRef.current = false;
+        }, 100);
+      } else if (chatEndRef.current) {
+        // If a new message is from the other user, don't auto-scroll
+        // If from current user, do auto-scroll
+        const lastMsg = msgs[msgs.length - 1];
+        if (lastMsg?.senderId === currentUserId) {
+          chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
+
+      // Mark messages as seen when viewing them
       msgs.forEach((msg) => {
         if (
           msg.senderId === selectedUser.id &&
@@ -114,23 +186,25 @@ export default function Messages() {
         }
       });
     });
-  
+
     return () => unsubscribe();
-  }, [selectedUser, currentUserId]);  
+  }, [selectedUser, currentUserId]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedUser || !currentUserId) return;
-
     try {
       await addDoc(collection(db, 'messages'), {
         text: newMessage,
         senderId: currentUserId,
-        senderName: auth.currentUser.displayName || '', // fallback just in case
+        senderName: auth.currentUser.displayName || '',
         to: selectedUser.id,
         timestamp: serverTimestamp(),
+        seen: false,
       });
       setNewMessage('');
+      // Set flag to scroll to bottom after sending
+      shouldScrollToBottomRef.current = true;
     } catch (error) {
       console.error('Error sending message:', error);
     }
@@ -138,15 +212,13 @@ export default function Messages() {
 
   const handleTyping = () => {
     if (!auth.currentUser || !selectedUser) return;
-  
+
     const userRef = doc(db, 'users', auth.currentUser.uid);
-  
-    // Set typingTo to the selected user
+
     updateDoc(userRef, {
       typingTo: selectedUser.id
     });
-  
-    // Clear after 2 seconds of inactivity
+
     clearTimeout(window.typingTimeout);
     window.typingTimeout = setTimeout(() => {
       updateDoc(userRef, {
@@ -185,12 +257,22 @@ export default function Messages() {
                     key={user.id}
                     button
                     selected={selectedUser?.id === user.id}
-                    onClick={() => setSelectedUser(user)}
+                    onClick={() => {
+                      setSelectedUser(user);
+                      // Set flag to scroll to bottom when selecting a user
+                      shouldScrollToBottomRef.current = true;
+                    }}
                   >
                     <ListItemAvatar>
-                      <Avatar src={user.avatar} alt={user.name}>
-                        {!user.avatar && user.name?.[0]}
-                      </Avatar>
+                      <Badge
+                        color="error"
+                        badgeContent={unreadCounts[user.id] || 0}
+                        invisible={!unreadCounts[user.id]}
+                      >
+                        <Avatar src={user.avatar} alt={user.name}>
+                          {!user.avatar && user.name?.[0]}
+                        </Avatar>
+                      </Badge>
                     </ListItemAvatar>
                     <ListItemText
                       primary={
@@ -239,7 +321,10 @@ export default function Messages() {
                   </Typography>
                 </Box>
 
-                <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
+                <Box 
+                  ref={messagesContainerRef}
+                  sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}
+                >
                   {messages.map((msg, index) => (
                     <Box key={msg.id}>
                       <Box
@@ -285,6 +370,8 @@ export default function Messages() {
                       )}
                     </Box>
                   ))}
+                  {/* This is the empty div that will be scrolled to */}
+                  <div ref={chatEndRef} />
                 </Box>
 
                 <Box
