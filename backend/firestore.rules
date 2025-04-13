@@ -1,19 +1,92 @@
-rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
 
-    // This rule allows anyone with your Firestore database reference to view, edit,
-    // and delete all data in your Firestore database. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Firestore database will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Firestore database will be denied until you Update
-    // your rules
-    match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2025, 4, 16);
+    // Helper function to check if user is accessing their own document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Helper function to check if user is a group member
+    function isGroupMember(groupId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+    }
+
+    // 🔹 Messages Collection
+    match /messages/{message} {
+      // Allow any authenticated user to read messages
+      allow read: if isAuthenticated();
+
+      // Allow creating new messages (sender only, required fields only)
+      allow create: if isAuthenticated() &&
+        request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.text is string &&
+        request.resource.data.senderName is string &&
+        request.resource.data.timestamp is timestamp;
+
+      // Allow updating messages only to mark them as seen
+      allow update: if isAuthenticated() &&
+        // Only the recipient can mark as seen
+        resource.data.to == request.auth.uid &&
+        // Only the `seen` field is changing (optional safety check)
+        request.resource.data.seen == true &&
+        request.resource.data.text == resource.data.text &&
+        request.resource.data.senderId == resource.data.senderId &&
+        request.resource.data.senderName == resource.data.senderName &&
+        request.resource.data.timestamp == resource.data.timestamp &&
+        request.resource.data.to == resource.data.to;
+    }
+
+    // 🔹 Users Collection
+    match /users/{userId} {
+      // Allow read if authenticated
+      allow read: if isAuthenticated();
+      
+      // Allow write if user is the owner
+      allow write: if isOwner(userId);
+      
+      // Allow update if user is the owner
+      allow update: if isOwner(userId);
+    }
+    
+    // 🔹 Groups Collection
+    match /groups/{groupId} {
+      // Allow read if authenticated
+      allow read: if isAuthenticated();
+      
+      // Allow create if authenticated
+      allow create: if isAuthenticated() &&
+        request.resource.data.creatorId == request.auth.uid;
+      
+      // Allow update/delete if user is the creator
+      allow update, delete: if isAuthenticated() && 
+        resource.data.creatorId == request.auth.uid;
+      
+      // Allow members to update their own status
+      match /members/{memberId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated() && memberId == request.auth.uid;
+      }
+    }
+
+    // 🔹 Notifications Collection
+    match /notifications/{notificationId} {
+      // Allow read if authenticated and notification belongs to user
+      allow read: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      
+      // Allow create if authenticated and notification is for the user
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+      
+      // Allow update if authenticated and notification belongs to user
+      allow update: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid;
     }
   }
 }

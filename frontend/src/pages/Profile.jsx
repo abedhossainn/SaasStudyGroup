@@ -22,6 +22,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { getUserProfile, updateProfile } from '../services/profileService';
 import { getGroups } from '../services/groupService';
+import { uploadFileToCloudinary } from '../services/fileService';
 
 export default function Profile() {
   const theme = useTheme();
@@ -39,7 +40,7 @@ export default function Profile() {
   const [previewImage, setPreviewImage] = useState(null);
 
   useEffect(() => {
-    if (currentUser?.id) {
+    if (currentUser?.uid) {
       fetchProfile();
     } else {
       setLoading(false);
@@ -48,7 +49,7 @@ export default function Profile() {
 
   const fetchProfile = async () => {
     try {
-      const profileData = await getUserProfile(currentUser.id);
+      const profileData = await getUserProfile(currentUser.uid);
       setProfile(profileData);
       setEditForm({
         name: profileData?.name || '',
@@ -60,7 +61,7 @@ export default function Profile() {
       // Fetch joined groups
       const groups = await getGroups();
       const userGroups = groups.filter(group => 
-        group.members.includes(currentUser.id)
+        group.members.includes(currentUser.uid)
       );
       setJoinedGroups(userGroups);
     } catch (error) {
@@ -87,17 +88,18 @@ export default function Profile() {
   const handleImageChange = (event) => {
     const file = event.target.files[0];
     if (file) {
-      setEditForm(prev => ({ ...prev, avatar: file }));
-      setPreviewImage(URL.createObjectURL(file));
+      
+        setEditForm(prev => ({ ...prev, avatar: file }));
+        setPreviewImage(URL.createObjectURL(file));
     }
   };
 
   const handleSave = async () => {
     try {
       setSaving(true);
-      const updatedProfile = await updateProfile(currentUser.id, {
+      const updatedProfile = await updateProfile(currentUser.uid, {
         ...editForm,
-        avatar: editForm.avatar || profile?.avatar
+        avatar: editForm.avatar || profile?.avatar || null
       });
       setProfile(updatedProfile);
       setEditing(false);

@@ -21,7 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 export default function Login() {
   const theme = useTheme();
   const navigate = useNavigate();
-  const { login, googleSignIn, signup } = useAuth();
+  const { login, googleSignIn, signup, error: authError } = useAuth();
   
   // Login states
   const [email, setEmail] = useState('');
@@ -38,13 +38,20 @@ export default function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (!email || !password) {
+      setError('Please fill in all fields');
+      return;
+    }
+
     try {
       setError('');
       setLoading(true);
-      await login(email, password);
-      navigate('/');
+      const result = await login(email, password);
+      if (result && result.success) {
+        navigate('/verify-otp');
+      }
     } catch (error) {
-      setError('Failed to sign in');
+      setError(error.message || 'Failed to login');
     } finally {
       setLoading(false);
     }
@@ -60,10 +67,12 @@ export default function Login() {
     try {
       setError('');
       setLoading(true);
-      await signup(signupEmail, signupPassword, displayName);
-      navigate('/');
+      const result = await signup(signupEmail, signupPassword, displayName);
+      if (result && result.success) {
+        navigate('/verify-otp');
+      }
     } catch (error) {
-      setError(error.message);
+      setError(error.message || 'Failed to create account');
     } finally {
       setLoading(false);
     }
@@ -74,9 +83,9 @@ export default function Login() {
       setError('');
       setLoading(true);
       await googleSignIn();
-      navigate('/');
+      navigate('/dashboard');
     } catch (error) {
-      setError(error.message);
+      setError(error.message || 'Failed to sign in with Google');
     } finally {
       setLoading(false);
     }
@@ -92,9 +101,9 @@ export default function Login() {
       }}
     >
       <Container maxWidth="lg" sx={{ display: 'flex', gap: 4 }}>
-        {error && (
+        {(error || authError) && (
           <Alert severity="error" sx={{ position: 'fixed', top: 16, right: 16, zIndex: 1000 }}>
-            {error}
+            {error || authError}
           </Alert>
         )}
         

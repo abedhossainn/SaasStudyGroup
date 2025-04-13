@@ -13,6 +13,8 @@ import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import GroupDetails from './pages/GroupDetails';
 import { useAuth } from './contexts/AuthContext';
+import RequestOTP from './pages/RequestOTP';
+import VerifyOTP from './pages/VerifyOTP';
 
 // Custom theme settings
 const getThemeSettings = (mode) => ({
@@ -147,8 +149,8 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
-        <AuthProvider>
+      <AuthProvider>
+        <Router>
           <Routes>
             <Route path="/login" element={
               <PublicRoute>
@@ -171,10 +173,13 @@ function App() {
               <Route path="group/:groupId" element={<GroupDetails />} />
             </Route>
 
+            <Route path="/request-otp" element={<RequestOTP />} />
+            <Route path="/verify-otp" element={<VerifyOTP />} />
+
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
-        </AuthProvider>
-      </Router>
+        </Router>
+      </AuthProvider>
     </ThemeProvider>
   );
 }
