@@ -1,0 +1,2 @@
+export const REACT_APP_CLOUDINARY_CLOUD_NAME="dvuardntf"
+export const REACT_APP_CLOUDINARY_PRESET="SaasFiles"

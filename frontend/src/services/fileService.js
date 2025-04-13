@@ -1,6 +1,8 @@
+import { REACT_APP_CLOUDINARY_CLOUD_NAME, REACT_APP_CLOUDINARY_PRESET } from "../cloudinary";
+
 export const uploadFileToCloudinary = async (file) => {
-    const cloudName = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = process.env.REACT_APP_CLOUDINARY_PRESET;
+    const cloudName = REACT_APP_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = REACT_APP_CLOUDINARY_PRESET;
   
     const formData = new FormData();
     formData.append('file', file);
