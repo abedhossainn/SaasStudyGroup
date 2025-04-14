@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -38,15 +38,7 @@ export default function Profile() {
   });
   const [previewImage, setPreviewImage] = useState(null);
 
-  useEffect(() => {
-    if (currentUser?.id) {
-      fetchProfile();
-    } else {
-      setLoading(false);
-    }
-  }, [currentUser]);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       const profileData = await getUserProfile(currentUser.id);
       setProfile(profileData);
@@ -68,7 +60,15 @@ export default function Profile() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser?.id) {
+      fetchProfile();
+    } else {
+      setLoading(false);
+    }
+  }, [currentUser, fetchProfile]);
 
   const handleEdit = () => {
     setEditing(true);
