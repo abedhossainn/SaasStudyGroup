@@ -26,6 +26,7 @@ import {
   serverTimestamp,
   doc,
   updateDoc,
+  getDoc,
 } from 'firebase/firestore';
 import { formatDistanceToNow } from 'date-fns';
 import { useSnackbar } from 'notistack';
@@ -212,6 +213,7 @@ export default function Messages() {
     e.preventDefault();
     if (!newMessage.trim() || !selectedUser || !currentUserId) return;
     try {
+      // Add the message to Firestore
       await addDoc(collection(db, 'messages'), {
         text: newMessage,
         senderId: currentUserId,
@@ -220,6 +222,22 @@ export default function Messages() {
         timestamp: serverTimestamp(),
         seen: false,
       });
+      
+      // Get the current user's name for the notification
+      const userRef = doc(db, 'users', currentUserId);
+      const userSnap = await getDoc(userRef);
+      const senderName = userSnap.exists() ? userSnap.data().displayName || 'Someone' : 'Someone';
+      
+      // Create a notification for the recipient
+      await addDoc(collection(db, 'notifications'), {
+        type: 'message',
+        content: `${senderName} sent you a message: "${newMessage.length > 30 ? newMessage.substring(0, 30) + '...' : newMessage}"`,
+        userId: selectedUser.id,
+        senderUserId: currentUserId,
+        read: false,
+        timestamp: serverTimestamp()
+      });
+      
       setNewMessage('');
       // Set flag to scroll to bottom after sending
       shouldScrollToBottomRef.current = true;

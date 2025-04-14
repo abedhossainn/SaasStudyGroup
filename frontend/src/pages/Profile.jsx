@@ -21,7 +21,8 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserProfile, updateProfile } from '../services/profileService';
-import { getGroups } from '../services/groupService';
+import { getGroups, getGroupById } from '../services/groupService';
+import { uploadFileToCloudinary } from '../services/fileService'; 
 
 export default function Profile() {
   const theme = useTheme();
@@ -40,35 +41,35 @@ export default function Profile() {
 
   const fetchProfile = useCallback(async () => {
     try {
-      const profileData = await getUserProfile(currentUser.id);
+      const profileData = await getUserProfile(currentUser.uid);
       setProfile(profileData);
       setEditForm({
         name: profileData?.name || '',
         bio: profileData?.bio || '',
-        avatar: profileData?.avatar || null
+        avatar: null
       });
-      setPreviewImage(profileData?.avatar || null);
 
-      // Fetch joined groups
-      const groups = await getGroups();
-      const userGroups = groups.filter(group => 
-        group.members.includes(currentUser.id)
-      );
-      setJoinedGroups(userGroups);
+      // Fetch groups user has joined
+      if (profileData?.groups?.length > 0) {
+        const groupsData = await Promise.all(
+          profileData.groups.map(groupId => getGroupById(groupId))
+        );
+        setJoinedGroups(groupsData.filter(Boolean));
+      } 
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      console.error("Error fetching profile:", error);
     } finally {
       setLoading(false);
     }
   }, [currentUser]);
 
   useEffect(() => {
-    if (currentUser?.id) {
+    if (currentUser?.uid) {
       fetchProfile();
     } else {
       setLoading(false);
     }
-  }, [currentUser, fetchProfile]);
+  }, [currentUser, fetchProfile]);  
 
   const handleEdit = () => {
     setEditing(true);
@@ -87,17 +88,18 @@ export default function Profile() {
   const handleImageChange = (event) => {
     const file = event.target.files[0];
     if (file) {
-      setEditForm(prev => ({ ...prev, avatar: file }));
-      setPreviewImage(URL.createObjectURL(file));
+      
+        setEditForm(prev => ({ ...prev, avatar: file }));
+        setPreviewImage(URL.createObjectURL(file));
     }
   };
 
   const handleSave = async () => {
     try {
       setSaving(true);
-      const updatedProfile = await updateProfile(currentUser.id, {
+      const updatedProfile = await updateProfile(currentUser.uid, {
         ...editForm,
-        avatar: editForm.avatar || profile?.avatar
+        avatar: editForm.avatar || profile?.avatar || null
       });
       setProfile(updatedProfile);
       setEditing(false);

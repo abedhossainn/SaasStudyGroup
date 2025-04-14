@@ -88,8 +88,8 @@ export default function CreateGroup() {
       // 4. Set up proper error handling
       const newGroup = {
         ...formData,
-        createdBy: currentUser.id,
-        members: [currentUser.id],
+        createdBy: currentUser.uid, // Changed from currentUser.id to currentUser.uid
+        members: [currentUser.uid], // Changed from currentUser.id to currentUser.uid
         createdAt: new Date().toISOString()
       };
 

@@ -91,15 +91,20 @@ export default function BrowseGroups() {
   const handleJoinGroup = async (groupId) => {
     setJoining(groupId);
     try {
-      // && backend changes
-      // 1. Implement member limit validation
-      // 2. Add notification for group owner
-      // 3. Update group members array in Firestore
-      await joinGroup(groupId, currentUser.id);
+      console.log("Attempting to join group:", groupId);
+      console.log("Current user:", currentUser.uid);
+      
+      await joinGroup(groupId, currentUser.uid);
+      console.log("Join group operation completed successfully");
+      
       // Refresh groups to update UI
       await fetchGroups();
+      
+      // Navigate to the group details page after joining
+      navigate(`/group/${groupId}`);
     } catch (error) {
       console.error('Error joining group:', error);
+      alert(`Failed to join the group: ${error.message}`);
     } finally {
       setJoining(null);
     }
@@ -203,13 +208,13 @@ export default function BrowseGroups() {
                 <CardActions>
                   <Button
                     fullWidth
-                    variant={group.members.includes(currentUser.id) ? "outlined" : "contained"}
-                    disabled={group.members.includes(currentUser.id) || joining === group.id}
+                    variant={group.members.includes(currentUser.uid) ? "outlined" : "contained"}
+                    disabled={group.members.includes(currentUser.uid) || joining === group.id}
                     onClick={() => handleJoinGroup(group.id)}
                   >
                     {joining === group.id ? (
                       <CircularProgress size={24} />
-                    ) : group.members.includes(currentUser.id) ? (
+                    ) : group.members.includes(currentUser.uid) ? (
                       'Joined'
                     ) : (
                       'Join Group'

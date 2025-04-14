@@ -1,5 +1,3 @@
-rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
     // Helper function to check if user is authenticated
@@ -15,7 +13,7 @@ service cloud.firestore {
     // Helper function to check if user is a group member
     function isGroupMember(groupId) {
       return isAuthenticated() && 
-        request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.members;
+        exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
     }
 
     // Helper function to check if user is the group creator
@@ -29,38 +27,60 @@ service cloud.firestore {
       // Allow any authenticated user to read messages
       allow read: if isAuthenticated();
 
-      // Allow creating new messages (sender only)
+      // Allow creating new messages (sender only, required fields only)
       allow create: if isAuthenticated() &&
-        request.resource.data.senderId == request.auth.uid;
+        request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.text is string &&
+        request.resource.data.senderName is string &&
+        request.resource.data.timestamp is timestamp;
 
       // Allow updating messages only to mark them as seen
       allow update: if isAuthenticated() &&
         // Only the recipient can mark as seen
-        resource.data.to == request.auth.uid;
+        resource.data.to == request.auth.uid &&
+        // Only the `seen` field is changing (optional safety check)
+        request.resource.data.seen == true &&
+        request.resource.data.text == resource.data.text &&
+        request.resource.data.senderId == resource.data.senderId &&
+        request.resource.data.senderName == resource.data.senderName &&
+        request.resource.data.timestamp == resource.data.timestamp &&
+        request.resource.data.to == resource.data.to;
     }
 
     // 🔹 Users Collection
     match /users/{userId} {
+      // Allow read if authenticated
       allow read: if isAuthenticated();
-      allow create: if isOwner(userId);
+      
+      // Allow write if user is the owner
+      allow write: if isOwner(userId);
+      
+      // Allow update if user is the owner
       allow update: if isOwner(userId);
-      allow delete: if false; // Prevent user deletion for safety
+      
+      // Prevent user deletion for safety
+      allow delete: if false; 
     }
     
     // 🔹 Groups Collection
     match /groups/{groupId} {
-      // Anyone authenticated can read groups
+      // Allow read if authenticated
       allow read: if isAuthenticated();
       
-      // Anyone authenticated can create a group - more permissive
-      allow create: if isAuthenticated();
+      // Allow create if authenticated
+      allow create: if isAuthenticated() &&
+        request.resource.data.creatorId == request.auth.uid;
       
-      // Only creator can delete
-      allow delete: if isGroupCreator(groupId);
+      // Allow update/delete if user is the creator
+      allow update, delete: if isAuthenticated() && 
+        resource.data.creatorId == request.auth.uid;
       
-      // Allow updates if user is authenticated
-      allow update: if isAuthenticated();
-
+      // Allow members to update their own status
+      match /members/{memberId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated() && memberId == request.auth.uid;
+      }
+      
       // Group Messages Subcollection
       match /messages/{messageId} {
         allow read: if isAuthenticated();
@@ -94,10 +114,17 @@ service cloud.firestore {
 
     // 🔹 Notifications Collection
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated();
+      // Allow read if authenticated and notification belongs to user
+      allow read: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      
+      // Allow create if authenticated and notification is for the user
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+      
+      // Allow update if authenticated and notification belongs to user
+      allow update: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid; 
     }
   }
 }

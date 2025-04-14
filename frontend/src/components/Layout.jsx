@@ -31,7 +31,7 @@ import {
   CalendarMonth as CalendarIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
-import { db} from '../firebase';
+import { db } from '../firebase';
 import {
   collection,
   query,
@@ -39,7 +39,7 @@ import {
   where
 } from 'firebase/firestore';
 
-const drawerWidth = 240;
+const drawerWidth = 300;
 
 export default function Layout({ toggleTheme, mode }) {
   const theme = useTheme();
@@ -51,7 +51,7 @@ export default function Layout({ toggleTheme, mode }) {
   const [open, setOpen] = useState(!isMobile);
   const [anchorEl, setAnchorEl] = useState(null);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
-  const [notificationCount] = useState(5); // Keeping the hardcoded value for now
+  const [notificationCount, setNotificationCount] = useState(0);
 
   // Effect to track unread messages
   useEffect(() => {
@@ -66,6 +66,25 @@ export default function Layout({ toggleTheme, mode }) {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setUnreadMessageCount(snapshot.docs.length);
     });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // Effect to track unread notifications
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+
+    // Set up a real-time listener for unread notifications
+    const unsubscribe = onSnapshot(
+      query(
+        collection(db, 'notifications'),
+        where('userId', '==', currentUser.uid),
+        where('read', '==', false)
+      ),
+      (snapshot) => {
+        setNotificationCount(snapshot.docs.length);
+      }
+    );
 
     return () => unsubscribe();
   }, [currentUser]);
@@ -179,6 +198,13 @@ export default function Layout({ toggleTheme, mode }) {
         onClose={handleProfileMenuClose}
         transformOrigin={{ horizontal: 'right', vertical: 'top' }}
         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        aria-hidden={false} // Ensure this isn't hidden from screen readers
+        disableEnforceFocus={false} // Make sure focus is properly trapped
+        disableAutoFocus={false} 
+        MenuListProps={{
+          'aria-labelledby': 'profile-button',
+          role: 'menu',
+        }}
       >
         <MenuItem onClick={() => { navigate('/profile'); handleProfileMenuClose(); }}>
           <ListItemIcon>
@@ -203,13 +229,13 @@ export default function Layout({ toggleTheme, mode }) {
         variant="permanent"
         open={open}
         sx={{
-          width: open ? drawerWidth : 72,
+          width: open ? drawerWidth : 62,
           transition: theme.transitions.create('width', {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.enteringScreen,
           }),
           '& .MuiDrawer-paper': {
-            width: open ? drawerWidth : 72,
+            width: open ? drawerWidth : 62,
             overflowX: 'hidden',
             transition: theme.transitions.create('width', {
               easing: theme.transitions.easing.sharp,
@@ -269,13 +295,7 @@ export default function Layout({ toggleTheme, mode }) {
                   )}
                 </ListItemIcon>
                 {open && (
-                  item.badge ? (
-                    <Badge badgeContent={item.badge} color="error" sx={{ width: '100%' }}>
-                      <ListItemText primary={item.text} />
-                    </Badge>
-                  ) : (
-                    <ListItemText primary={item.text} />
-                  )
+                  <ListItemText primary={item.text} />
                 )}
               </ListItem>
             ))}

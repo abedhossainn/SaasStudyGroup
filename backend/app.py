@@ -1,26 +1,135 @@
 import os
 import json
+import pyotp
+import time
+from datetime import datetime, timedelta
 from firebase_admin import credentials, initialize_app, auth
 from flask import Flask, request, jsonify
-from flask_cors import CORS  # Import CORS
+from flask_cors import CORS
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
 
 # Enable CORS for all routes
-CORS(app)  # Allow all origins
-# Alternatively, allow only your frontend domain:
-# CORS(app, origins="https://saasstudygroup-frontend.onrender.com")
+CORS(app)
 
 # Initialize Firebase
 firebase_credentials = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
 cred = credentials.Certificate(firebase_credentials)
 initialize_app(cred)
 
+# Initialize SendGrid
+sg = SendGridAPIClient(os.getenv('SENDGRID_API_KEY'))
+
+# Store OTPs temporarily (in production, use a proper database)
+otp_storage = {}
+
 # Home route
 @app.route("/")
 def home():
     return "Hello, Render!"
+
+# Generate and send OTP
+@app.route("/api/auth/request-otp", methods=["POST"])
+def request_otp():
+    try:
+        email = request.json.get("email")
+        if not email:
+            return jsonify({"error": "Email is required"}), 400
+
+        # Generate OTP
+        totp = pyotp.TOTP(pyotp.random_base32())
+        otp = totp.now()
+        
+        # Store OTP with expiration (5 minutes)
+        otp_storage[email] = {
+            "otp": otp,
+            "expires": datetime.now() + timedelta(minutes=5)
+        }
+
+        # Send email using SendGrid
+        message = Mail(
+            from_email=os.getenv('SENDER_EMAIL'),
+            to_emails=email,
+            subject='Your OTP for Study Group App',
+            html_content=f'<strong>Your OTP is: {otp}</strong><br>This code will expire in 5 minutes.'
+        )
+        
+        sg.send(message)
+
+        return jsonify({
+            "success": True,
+            "message": "OTP sent successfully"
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Verify OTP
+@app.route("/api/auth/verify-otp", methods=["POST"])
+def verify_otp():
+    try:
+        email = request.json.get("email")
+        otp = request.json.get("otp")
+        password = request.json.get("password")  # Add password to request
+
+        if not email or not otp:
+            return jsonify({"error": "Email and OTP are required"}), 400
+
+        stored_otp = otp_storage.get(email)
+        
+        if not stored_otp:
+            return jsonify({"error": "OTP not found or expired"}), 400
+
+        if datetime.now() > stored_otp["expires"]:
+            del otp_storage[email]
+            return jsonify({"error": "OTP expired"}), 400
+
+        if stored_otp["otp"] != otp:
+            return jsonify({"error": "Invalid OTP"}), 400
+
+        # Clear the OTP
+        del otp_storage[email]
+
+        try:
+            # Try to get the user
+            user = auth.get_user_by_email(email)
+            # If user exists, create custom token
+            custom_token = auth.create_custom_token(user.uid)
+            return jsonify({
+                "success": True,
+                "token": custom_token.decode(),
+                "userExists": True,
+                "uid": user.uid
+            }), 200
+        except auth.UserNotFoundError:
+            # If user doesn't exist, create a new user with password
+            if not password:
+                return jsonify({"error": "Password is required for new users"}), 400
+                
+            user = auth.create_user(
+                email=email,
+                password=password
+            )
+            # Create custom token for the new user
+            custom_token = auth.create_custom_token(user.uid)
+            return jsonify({
+                "success": True,
+                "token": custom_token.decode(),
+                "userExists": False,
+                "uid": user.uid
+            }), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Verify token route
 @app.route("/verify-token", methods=["POST"])
@@ -34,5 +143,5 @@ def verify_token():
 
 # Run the app
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Use Render's assigned port
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)

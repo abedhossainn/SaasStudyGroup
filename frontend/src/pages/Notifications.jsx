@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -21,48 +20,70 @@ import {
   Group as GroupIcon,
   Notifications as NotificationsIcon,
   DoneAll as MarkReadIcon,
-  Circle as UnreadIcon
+  Circle as UnreadIcon,
+  Update as UpdateIcon,
+  ExitToApp as LeaveIcon,
+  PersonAdd as JoinIcon
 } from '@mui/icons-material';
-import { mockApi } from '../services/mockApi';
+import { useAuth } from '../contexts/AuthContext';
+import { 
+  getNotifications, 
+  markNotificationAsRead, 
+  markAllNotificationsAsRead,
+  subscribeToNotifications
+} from '../services/notificationService';
 
 export default function Notifications() {
   const theme = useTheme();
-  const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-
+  
   useEffect(() => {
-    fetchNotifications();
-  }, []);
-
-  const fetchNotifications = async () => {
-    try {
-      const data = await mockApi.getNotifications();
-      setNotifications(data);
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-    } finally {
+    if (!currentUser) return;
+    
+    // Initial fetch of notifications
+    const fetchInitialNotifications = async () => {
+      setLoading(true);
+      try {
+        const userNotifications = await getNotifications(currentUser.uid);
+        setNotifications(userNotifications);
+      } catch (error) {
+        console.error('Error fetching notifications:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchInitialNotifications();
+    
+    // Set up real-time listener for new notifications
+    const unsubscribe = subscribeToNotifications(currentUser.uid, (updatedNotifications) => {
+      setNotifications(updatedNotifications);
       setLoading(false);
-    }
-  };
+    });
+    
+    // Clean up subscription when component unmounts
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [currentUser]);
 
   const handleMarkAllRead = async () => {
+    if (!currentUser) return;
+    
     try {
-      await mockApi.markAllNotificationsAsRead();
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      await markAllNotificationsAsRead(currentUser.uid);
+      // No need to update state manually as the real-time listener will update it
     } catch (error) {
-      console.error('Error marking notifications as read:', error);
+      console.error('Error marking all notifications as read:', error);
     }
   };
 
   const handleMarkAsRead = async (notificationId) => {
     try {
-      await mockApi.markNotificationAsRead(notificationId);
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === notificationId ? { ...n, read: true } : n
-        )
-      );
+      await markNotificationAsRead(notificationId);
+      // No need to update state manually as the real-time listener will update it
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
@@ -76,16 +97,23 @@ export default function Notifications() {
         return <MeetingIcon color="primary" />;
       case 'document':
         return <DocumentIcon color="primary" />;
+      case 'group_join':
+        return <JoinIcon color="primary" />;
+      case 'group_leave':
+        return <LeaveIcon color="primary" />;
+      case 'group_update':
+        return <UpdateIcon color="primary" />;
       case 'group':
-        return <GroupIcon color="primary" />;
       default:
-        return <NotificationsIcon color="primary" />;
+        return <GroupIcon color="primary" />;
     }
   };
 
   const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'Date unknown';
+    
     const now = new Date();
-    const diff = now - new Date(timestamp);
+    const diff = now - timestamp;
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
@@ -162,7 +190,14 @@ export default function Notifications() {
                 </ListItemIcon>
                 <ListItemText
                   primary={notification.content}
-                  secondary={formatTimestamp(notification.timestamp)}
+                  secondary={
+                    <>
+                      {formatTimestamp(notification.timestamp)}
+                      {notification.groupName && (
+                        <span> • {notification.groupName}</span>
+                      )}
+                    </>
+                  }
                   sx={{
                     '& .MuiListItemText-primary': {
                       fontWeight: notification.read ? 400 : 600

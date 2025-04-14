@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -10,8 +10,6 @@ import {
   CardMedia,
   CardActions,
   Chip,
-  AvatarGroup,
-  Avatar,
   useTheme,
   Dialog,
   DialogTitle,
@@ -21,15 +19,23 @@ import {
   Alert,
   Snackbar,
   Paper,
-  IconButton
+  CircularProgress,
+  InputAdornment,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Upload as UploadIcon,
-  School as SchoolIcon
+  CloudUpload as CloudUploadIcon,
+  Search as SearchIcon
 } from '@mui/icons-material';
-import { mockApi, mockUsers } from '../services/mockApi';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { createGroup, joinGroup } from '../services/groupService';
+import { useDropzone } from 'react-dropzone';
 
 export default function Dashboard() {
   const theme = useTheme();
@@ -39,32 +45,85 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterCategory, setFilterCategory] = useState('All');
+  const [filteredGroups, setFilteredGroups] = useState([]);
+  const [error, setError] = useState('');
+  const [showError, setShowError] = useState(false);
   const [newGroup, setNewGroup] = useState({
     name: '',
     description: '',
     topics: '',
     image: '/test_wallpaper.png',
-    creatorId: currentUser?.id
+    creatorId: currentUser?.uid
   });
-  const [error, setError] = useState('');
-  const [showError, setShowError] = useState(false);
 
+  const categories = ['All', 'Programming', 'Mathematics', 'Science', 'Languages', 'Business', 'Arts', 'Other'];
+
+  // Fetch groups and set up real-time listener
   useEffect(() => {
-    fetchGroups();
-  }, []);
+    const groupsQuery = query(
+      collection(db, 'groups'),
+      orderBy('lastActive', 'desc')
+    );
 
-  const fetchGroups = async () => {
-    try {
-      const data = await mockApi.getGroups();
-      setGroups(data);
-    } catch (error) {
+    const unsubscribe = onSnapshot(groupsQuery, (snapshot) => {
+      const groupsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setGroups(groupsData);
+      setLoading(false);
+    }, (error) => {
       console.error('Error fetching groups:', error);
       setError('Failed to load study groups');
       setShowError(true);
-    } finally {
       setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Filter groups based on search and category
+  useEffect(() => {
+    let filtered = [...groups];
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(group =>
+        group.name.toLowerCase().includes(query) ||
+        group.description.toLowerCase().includes(query) ||
+        group.topics.some(topic => topic.toLowerCase().includes(query))
+      );
     }
-  };
+
+    if (filterCategory !== 'All') {
+      filtered = filtered.filter(group => group.topics.includes(filterCategory));
+    }
+
+    setFilteredGroups(filtered);
+  }, [groups, searchQuery, filterCategory]);
+
+  // Enhanced file upload with react-dropzone
+  const onDrop = useCallback(acceptedFiles => {
+    if (acceptedFiles?.length > 0) {
+      const file = acceptedFiles[0];
+      setSelectedImage(file);
+      setNewGroup(prev => ({
+        ...prev,
+        image: URL.createObjectURL(file)
+      }));
+    }
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'image/*': ['.jpeg', '.jpg', '.png', '.gif']
+    },
+    maxFiles: 1,
+    maxSize: 5 * 1024 * 1024 // 5MB max size
+  });
 
   const handleCreateGroup = async () => {
     if (!newGroup.name || !newGroup.description) {
@@ -74,44 +133,70 @@ export default function Dashboard() {
     }
 
     try {
-      const imageUrl = selectedImage ? URL.createObjectURL(selectedImage) : '/test_wallpaper.png';
-      const createdGroup = await mockApi.createGroup({
-        ...newGroup,
-        image: imageUrl,
-        topics: newGroup.topics.split(',').map(topic => topic.trim()),
+      setLoading(true);
+      
+      // Use the centralized createGroup function from our service
+      // which already handles Cloudinary uploads
+      await createGroup({
+        name: newGroup.name,
+        description: newGroup.description,
+        topics: newGroup.topics.split(',').map(topic => topic.trim()).filter(Boolean),
+        image: selectedImage,
+        createdBy: currentUser?.uid,
+        members: [currentUser?.uid]
       });
-      setGroups(prev => [...prev, createdGroup]);
+
       setOpenDialog(false);
       setNewGroup({
         name: '',
         description: '',
         topics: '',
         image: '/test_wallpaper.png',
-        creatorId: currentUser?.id
+        creatorId: currentUser?.uid
       });
       setSelectedImage(null);
     } catch (error) {
       console.error('Error creating group:', error);
-      setError('Failed to create study group');
+      setError(error.message || 'Failed to create study group');
       setShowError(true);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleImageChange = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      setSelectedImage(file);
-      setNewGroup(prev => ({
-        ...prev,
-        image: URL.createObjectURL(file)
-      }));
+  // Enhanced function to handle both joining and viewing groups
+  const handleGroupAction = async (group) => {
+    const isAlreadyMember = group.members?.includes(currentUser?.uid);
+    
+    if (isAlreadyMember) {
+      // If already a member, just navigate to the group
+      navigate(`/group/${group.id}`);
+    } else {
+      // If not a member, join the group first
+      try {
+        setLoading(true);
+        console.log(`Attempting to join group: ${group.id}`);
+        
+        // Import the joinGroup function at the top of the file
+        await joinGroup(group.id, currentUser.uid);
+        
+        console.log("Successfully joined group");
+        // Now navigate to the group page
+        navigate(`/group/${group.id}`);
+      } catch (error) {
+        console.error('Error joining group:', error);
+        setError(error.message || 'Failed to join the group');
+        setShowError(true);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
   if (loading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <Typography>Loading study groups...</Typography>
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center' }}>
+        <CircularProgress />
       </Box>
     );
   }
@@ -124,57 +209,75 @@ export default function Dashboard() {
           p: 3,
           mb: 4,
           background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-          color: theme.palette.mode === 'light' ? 'black' : 'white',
-          position: 'relative',
-          overflow: 'hidden'
+          color: 'black' // Changed from 'white' to 'black' for better contrast
         }}
       >
-        <Box sx={{ position: 'relative', zIndex: 1 }}>
-          <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
-            Welcome back, {currentUser?.name || 'User'}!
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 3, maxWidth: 600, opacity: 0.9 }}>
-            Join study groups, collaborate with peers, and achieve your academic goals together.
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => setOpenDialog(true)}
-              sx={{
-                bgcolor: 'white',
-                color: 'black',
-                '&:hover': {
-                  bgcolor: 'rgba(255, 255, 255, 0.9)',
-                }
-              }}
-            >
-              Create New Group
-            </Button>
-            <Button
-              variant="contained"
-              onClick={() => navigate('/groups')}
-              sx={{
-                bgcolor: 'white',
-                color: 'black',
-                '&:hover': {
-                  bgcolor: 'rgba(255, 255, 255, 0.9)',
-                }
-              }}
-            >
-              Browse Groups
-            </Button>
-          </Box>
-        </Box>
+        <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: 'black' }}>
+          Welcome back, {currentUser?.name || 'User'}!
+        </Typography>
+        <Typography variant="body1" sx={{ mb: 3, maxWidth: 600, color: 'black' }}>
+          Join study groups, collaborate with peers, and achieve your academic goals together.
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setOpenDialog(true)}
+          sx={{
+            bgcolor: 'white',
+            color: 'black',
+            '&:hover': {
+              bgcolor: 'rgba(255, 255, 255, 0.9)',
+            }
+          }}
+        >
+          Create New Group
+        </Button>
       </Paper>
 
-      {/* Study Groups Grid */}
+      {/* Search and Filter */}
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" component="h2" gutterBottom sx={{ fontWeight: 600 }}>
-          Active Study Groups
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              placeholder="Search groups..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <FormControl fullWidth>
+              <InputLabel>Category</InputLabel>
+              <Select
+                value={filterCategory}
+                label="Category"
+                onChange={(e) => setFilterCategory(e.target.value)}
+              >
+                {categories.map((category) => (
+                  <MenuItem key={category} value={category}>
+                    {category}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+      </Box>
+
+      {/* Groups Grid */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+          Study Groups {filteredGroups.length > 0 && `(${filteredGroups.length})`}
         </Typography>
         <Grid container spacing={3}>
-          {groups.map((group) => (
+          {filteredGroups.map((group) => (
             <Grid item xs={12} sm={6} md={4} key={group.id}>
               <Card 
                 elevation={3}
@@ -182,7 +285,6 @@ export default function Dashboard() {
                   height: '100%',
                   display: 'flex',
                   flexDirection: 'column',
-                  bgcolor: theme.palette.background.paper,
                   '&:hover': {
                     transform: 'translateY(-4px)',
                     transition: 'transform 0.2s ease-in-out'
@@ -196,7 +298,7 @@ export default function Dashboard() {
                   alt={group.name}
                 />
                 <CardContent sx={{ flexGrow: 1 }}>
-                  <Typography variant="h6" component="h2" gutterBottom>
+                  <Typography variant="h6" gutterBottom>
                     {group.name}
                   </Typography>
                   <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -208,58 +310,46 @@ export default function Dashboard() {
                         key={index}
                         label={topic}
                         size="small"
-                        sx={{ bgcolor: theme.palette.primary.main, color: theme.palette.mode === 'light' ? 'black' : 'white' }}
+                        sx={{ bgcolor: theme.palette.primary.main, color: 'white' }}
                       />
                     ))}
                   </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <AvatarGroup max={3} sx={{ '& .MuiAvatar-root': { width: 24, height: 24 } }}>
-                      {group.members.map((memberId) => {
-                        const member = mockUsers.find(u => u.id === memberId);
-                        return (
-                          <Avatar
-                            key={memberId}
-                            src={member?.avatar}
-                            alt={member?.name}
-                            sx={{ width: 24, height: 24 }}
-                          />
-                        );
-                      })}
-                    </AvatarGroup>
-                    <Typography variant="body2" color="text.secondary">
-                      {group.members.length} members
-                    </Typography>
-                  </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    {group.members?.length || 0} members
+                  </Typography>
                 </CardContent>
                 <CardActions sx={{ p: 2 }}>
                   <Button
                     fullWidth
                     variant="contained"
-                    onClick={() => navigate(`/group/${group.id}`)}
-                    sx={{
-                      bgcolor: theme.palette.primary.main,
-                      color: theme.palette.mode === 'light' ? 'black' : 'white',
-                      '&:hover': {
-                        bgcolor: theme.palette.primary.dark
-                      }
-                    }}
+                    onClick={() => handleGroupAction(group)}
                   >
-                    {group.members.includes(currentUser?.id) ? 'View Group' : 'Join Group'}
+                    {group.members?.includes(currentUser?.uid) ? 'View Group' : 'Join Group'}
                   </Button>
                 </CardActions>
               </Card>
             </Grid>
           ))}
+          {filteredGroups.length === 0 && (
+            <Grid item xs={12}>
+              <Paper sx={{ p: 3, textAlign: 'center' }}>
+                <Typography variant="body1" color="text.secondary">
+                  No study groups found matching your criteria
+                </Typography>
+              </Paper>
+            </Grid>
+          )}
         </Grid>
       </Box>
 
-      {/* Create Group Dialog */}
+      {/* Create Group Dialog with enhanced upload */}
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Create New Study Group</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
             <TextField
               fullWidth
+              required
               label="Group Name"
               value={newGroup.name}
               onChange={(e) => setNewGroup(prev => ({ ...prev, name: e.target.value }))}
@@ -267,6 +357,7 @@ export default function Dashboard() {
             />
             <TextField
               fullWidth
+              required
               label="Description"
               value={newGroup.description}
               onChange={(e) => setNewGroup(prev => ({ ...prev, description: e.target.value }))}
@@ -276,32 +367,45 @@ export default function Dashboard() {
             />
             <TextField
               fullWidth
+              required
               label="Topics (comma-separated)"
               value={newGroup.topics}
               onChange={(e) => setNewGroup(prev => ({ ...prev, topics: e.target.value }))}
               helperText="Example: Mathematics, Physics, Engineering"
               sx={{ mb: 2 }}
             />
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-              <Button
-                variant="outlined"
-                component="label"
-                startIcon={<UploadIcon />}
+            
+            {/* Enhanced Dropzone for image upload */}
+            <Box sx={{ mb: 2 }}>
+              <Box
+                {...getRootProps()}
+                sx={{
+                  border: '2px dashed',
+                  borderColor: isDragActive ? 'primary.main' : 'divider',
+                  borderRadius: 2,
+                  p: 2,
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  bgcolor: isDragActive ? 'rgba(0, 0, 0, 0.04)' : 'transparent',
+                  transition: '0.3s',
+                  '&:hover': {
+                    bgcolor: 'rgba(0, 0, 0, 0.04)'
+                  }
+                }}
               >
-                Upload Group Image
-                <input
-                  type="file"
-                  hidden
-                  accept="image/*"
-                  onChange={handleImageChange}
-                />
-              </Button>
-              {selectedImage && (
-                <Typography variant="body2" color="text.secondary">
-                  {selectedImage.name}
+                <input {...getInputProps()} />
+                <CloudUploadIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
+                <Typography>
+                  {isDragActive
+                    ? "Drop the image here..."
+                    : "Drag and drop a group image here, or click to select"}
                 </Typography>
-              )}
+                <Typography variant="caption" color="textSecondary">
+                  (Supports JPG, PNG, GIF up to 5MB)
+                </Typography>
+              </Box>
             </Box>
+            
             {newGroup.image && (
               <Box sx={{ width: '100%', height: 200, mb: 2 }}>
                 <img
@@ -319,19 +423,18 @@ export default function Dashboard() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
+          <Button 
+            onClick={() => setOpenDialog(false)}
+            disabled={loading}
+          >
+            Cancel
+          </Button>
           <Button
             onClick={handleCreateGroup}
             variant="contained"
-            sx={{
-              bgcolor: theme.palette.primary.main,
-              color: theme.palette.mode === 'light' ? 'black' : 'white',
-              '&:hover': {
-                bgcolor: theme.palette.primary.dark
-              }
-            }}
+            disabled={loading}
           >
-            Create
+            {loading ? <CircularProgress size={24} /> : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>

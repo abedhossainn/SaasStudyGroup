@@ -9,7 +9,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { mockApi } from './mockApi';
 import { USE_MOCK_API } from '../config/appConfig';
-
+import { uploadFileToCloudinary } from './fileService'
 // Get user profile
 export const getUserProfile = async (userId) => {
   if (USE_MOCK_API) {
@@ -67,12 +67,10 @@ export const updateProfile = async (userId, profileData) => {
         }
       */
       const userRef = doc(db, 'users', userId);
-      
-      let avatarUrl = profileData.avatar;
+
+      let avatarUrl = null;
       if (profileData.avatar && profileData.avatar instanceof File) {
-        const storageRef = ref(storage, `profile-images/${userId}/${Date.now()}-${profileData.avatar.name}`);
-        const snapshot = await uploadBytes(storageRef, profileData.avatar);
-        avatarUrl = await getDownloadURL(snapshot.ref);
+        avatarUrl = await uploadFileToCloudinary(profileData.avatar);
       }
 
       const updatedData = {
