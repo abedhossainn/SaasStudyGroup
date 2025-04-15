@@ -15,13 +15,16 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  Stack,
 } from '@mui/material';
 import {
   ViewDay as DayIcon,
   ViewWeek as WeekIcon,
   CalendarViewMonth as MonthIcon,
-  Add as AddIcon
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
@@ -40,7 +43,9 @@ import {
   getDocs,
   where,
   getDoc,
-  doc
+  doc,
+  deleteDoc,
+  updateDoc
 } from 'firebase/firestore';
 import { notifyGroupMembers } from '../services/notificationService';
 import { useSnackbar } from 'notistack';
@@ -62,13 +67,18 @@ export default function Calendar() {
   const [view, setView] = useState('month');
   const [events, setEvents] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
+  const [openEventDialog, setOpenEventDialog] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [editMode, setEditMode] = useState(false);
+  const [creatorName, setCreatorName] = useState('');
   const [newEvent, setNewEvent] = useState({
     title: '',
     start: new Date(),
     end: new Date(new Date().getTime() + 60 * 60 * 1000), // Default 1 hour meeting
     allDay: false,
     groupId: '',
-    description: ''
+    description: '',
+    link: '' // Add link property
   });
   const [groups, setGroups] = useState([]);
   const { enqueueSnackbar } = useSnackbar();
@@ -116,7 +126,8 @@ export default function Calendar() {
           resource: data.groupName || '',
           groupId: data.groupId || '',
           description: data.description || '',
-          createdBy: data.createdBy || ''
+          createdBy: data.createdBy || '',
+          link: data.link || ''
         };
       }).filter(event => {
         // Only show events for groups the user is a member of
@@ -178,6 +189,7 @@ export default function Calendar() {
         groupId: newEvent.groupId,
         groupName,
         description: newEvent.description,
+        link: newEvent.link,
         createdBy: currentUserId,
         createdAt: serverTimestamp()
       };
@@ -207,12 +219,77 @@ export default function Calendar() {
         end: new Date(new Date().getTime() + 60 * 60 * 1000),
         allDay: false,
         groupId: '',
-        description: ''
+        description: '',
+        link: ''
       });
     } catch (error) {
       console.error('Error adding event:', error);
       enqueueSnackbar('Failed to schedule meeting', { variant: 'error' });
     }
+  };
+
+  const handleEventClick = async (event) => {
+    setSelectedEvent(event);
+    setEditMode(false);
+    setOpenEventDialog(true);
+
+    // Fetch the creator's display name
+    try {
+      const userRef = doc(db, 'users', event.createdBy);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        setCreatorName(userSnap.data().displayName || 'Unknown User');
+      } else {
+        setCreatorName('Unknown User');
+      }
+    } catch (error) {
+      console.error('Error fetching creator name:', error);
+      setCreatorName('Unknown User');
+    }
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!selectedEvent) return;
+
+    if (!window.confirm('Are you sure you want to delete this event?')) return;
+
+    try {
+      const eventRef = doc(db, 'events', selectedEvent.id);
+      await deleteDoc(eventRef);
+      enqueueSnackbar('Event deleted successfully', { variant: 'success' });
+      setOpenEventDialog(false);
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      enqueueSnackbar('Failed to delete event', { variant: 'error' });
+    }
+  };
+
+  const handleEditEvent = () => {
+    setEditMode(true);
+  };
+
+  const handleSaveEvent = async () => {
+    if (!selectedEvent) return;
+
+    try {
+      const eventRef = doc(db, 'events', selectedEvent.id);
+      await updateDoc(eventRef, {
+        title: selectedEvent.title,
+        description: selectedEvent.description,
+        start: selectedEvent.start,
+        end: selectedEvent.end,
+        link: selectedEvent.link
+      });
+      enqueueSnackbar('Event updated successfully', { variant: 'success' });
+      setEditMode(false);
+    } catch (error) {
+      console.error('Error updating event:', error);
+      enqueueSnackbar('Failed to update event', { variant: 'error' });
+    }
+  };
+
+  const handleEventFieldChange = (field, value) => {
+    setSelectedEvent((prev) => ({ ...prev, [field]: value }));
   };
 
   const calendarStyle = {
@@ -228,6 +305,7 @@ export default function Calendar() {
       '&.rbc-active': {
         backgroundColor: theme.palette.primary.main,
         color: theme.palette.mode === 'light' ? 'black' : 'white',
+        textShadow: '0px 1px 2px rgba(0,0,0,0.4)',
       },
     },
     '.rbc-month-view, .rbc-time-view': {
@@ -239,6 +317,7 @@ export default function Calendar() {
       color: theme.palette.mode === 'light' ? 'black' : 'white',
       padding: '8px',
       fontWeight: 600,
+      textShadow: '0px 1px 2px rgba(0,0,0,0.35)',
     },
     '.rbc-date-cell': {
       padding: '4px',
@@ -251,10 +330,15 @@ export default function Calendar() {
     },
     '.rbc-event': {
       backgroundColor: theme.palette.primary.main,
-      color: theme.palette.mode === 'light' ? 'black' : 'white',
       border: 'none',
       borderRadius: '4px',
       padding: '2px 4px',
+      textShadow: '0px 1px 2px rgba(0,0,0,0.35)',
+      boxShadow: '0px 1px 3px rgba(0,0,0,0.2)',
+    },
+    '.rbc-event-content': {
+      color: 'black', // Explicitly set event text to black
+      fontWeight: 500,  // Make the text slightly bolder
     },
     '.rbc-off-range-bg': {
       backgroundColor: theme.palette.mode === 'light'
@@ -404,6 +488,7 @@ export default function Calendar() {
               }));
               handleDialogOpen();
             }}
+            onSelectEvent={handleEventClick}
             eventPropGetter={(event) => ({
               style: {
                 backgroundColor: theme.palette.primary.main,
@@ -453,6 +538,15 @@ export default function Calendar() {
               multiline
               rows={3}
             />
+
+            <TextField
+              label="Meeting Link (optional)"
+              name="link"
+              value={newEvent.link || ''}
+              onChange={handleInputChange}
+              placeholder="e.g., Zoom or Google Meet URL"
+              fullWidth
+            />
             
             <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
@@ -484,6 +578,113 @@ export default function Calendar() {
           >
             Schedule
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Event Details Dialog */}
+      <Dialog open={openEventDialog} onClose={() => setOpenEventDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Event Details</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2}>
+            <Typography variant="subtitle1">Created by: {creatorName}</Typography>
+            {editMode ? (
+              <>
+                <TextField
+                  label="Title"
+                  value={selectedEvent?.title || ''}
+                  onChange={(e) => handleEventFieldChange('title', e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  label="Description"
+                  value={selectedEvent?.description || ''}
+                  onChange={(e) => handleEventFieldChange('description', e.target.value)}
+                  fullWidth
+                  multiline
+                  rows={3}
+                />
+                <TextField
+                  label="Start Date & Time"
+                  type="datetime-local"
+                  value={format(selectedEvent?.start || new Date(), "yyyy-MM-dd'T'HH:mm")}
+                  onChange={(e) => handleEventFieldChange('start', new Date(e.target.value))}
+                  fullWidth
+                />
+                <TextField
+                  label="End Date & Time"
+                  type="datetime-local"
+                  value={format(selectedEvent?.end || new Date(), "yyyy-MM-dd'T'HH:mm")}
+                  onChange={(e) => handleEventFieldChange('end', new Date(e.target.value))}
+                  fullWidth
+                />
+                <TextField
+                  label="Meeting Link"
+                  value={selectedEvent?.link || ''}
+                  onChange={(e) => handleEventFieldChange('link', e.target.value)}
+                  fullWidth
+                  placeholder="e.g., Zoom or Google Meet URL"
+                />
+              </>
+            ) : (
+              <>
+                <Typography variant="h6" sx={{ color: 'black' }}>{selectedEvent?.title}</Typography>
+                <Typography variant="body1" sx={{ color: 'black' }}>{selectedEvent?.description}</Typography>
+                <Typography variant="body2" sx={{ color: 'black' }}>Start: {selectedEvent?.start?.toLocaleString()}</Typography>
+                <Typography variant="body2" sx={{ color: 'black' }}>End: {selectedEvent?.end?.toLocaleString()}</Typography>
+                {selectedEvent?.link && (
+                  <Box sx={{ mt: 2, border: '1px solid #e0e0e0', borderRadius: 1, p: 2, bgcolor: 'rgba(0, 0, 0, 0.02)' }}>
+                    <Typography variant="subtitle2" color="primary" gutterBottom>
+                      Meeting Link:
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                      <Typography 
+                        component="a" 
+                        href={selectedEvent.link} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        sx={{ 
+                          color: 'primary.main', 
+                          overflowWrap: 'break-word', 
+                          wordBreak: 'break-all',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          '&:hover': {
+                            color: 'primary.dark',
+                          }
+                        }}
+                      >
+                        {selectedEvent.link}
+                      </Typography>
+                      <Button 
+                        variant="contained" 
+                        size="small" 
+                        href={selectedEvent.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{ ml: 1 }}
+                      >
+                        Join Meeting
+                      </Button>
+                    </Box>
+                  </Box>
+                )}
+              </>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          {editMode ? (
+            <>
+              <Button onClick={() => setEditMode(false)}>Cancel</Button>
+              <Button variant="contained" onClick={handleSaveEvent}>Save</Button>
+            </>
+          ) : (
+            <>
+              <Button onClick={() => setOpenEventDialog(false)}>Close</Button>
+              <Button onClick={handleEditEvent} startIcon={<EditIcon />}>Edit</Button>
+              <Button onClick={handleDeleteEvent} startIcon={<DeleteIcon />} color="error">Delete</Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
     </Box>

@@ -26,18 +26,18 @@ import {
   DialogContent,
   DialogActions,
   ListItemAvatar,
-  Link
+  Tooltip
 } from '@mui/material';
 import {
   Send as SendIcon,
-  AttachFile as AttachFileIcon,
   Event as EventIcon,
   Upload as UploadIcon,
   Delete as DeleteIcon,
   GetApp as DownloadIcon,
-  CloudUpload as CloudUploadIcon
+  CloudUpload as CloudUploadIcon,
+  VideoCall as VideoCallIcon
 } from '@mui/icons-material';
-import { getGroupById, deleteGroup, uploadGroupDocument, uploadImageToCloudinary } from '../services/groupService';
+import { deleteGroup, uploadGroupDocument, uploadImageToCloudinary } from '../services/groupService';
 import { useAuth } from '../contexts/AuthContext';
 import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, getDoc, doc, where, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -59,6 +59,8 @@ export default function GroupDetails() {
   const [serverStatus, setServerStatus] = useState('checking'); // 'checking', 'online', 'offline'
   const [memberProfiles, setMemberProfiles] = useState({});
   const [meetings, setMeetings] = useState([]);
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [combinedMeetings, setCombinedMeetings] = useState([]);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   
@@ -297,6 +299,106 @@ export default function GroupDetails() {
     fetchMeetings();
   }, [groupId]);
 
+  // Fetch events from the events collection
+  useEffect(() => {
+    if (!groupId) return;
+    
+    const fetchEvents = async () => {
+      try {
+        console.log("Fetching calendar events for groupId:", groupId);
+        
+        // Query the events collection filtered by groupId
+        const eventsRef = collection(db, 'events');
+        const eventsQuery = query(
+          eventsRef, 
+          where('groupId', '==', groupId),
+          orderBy('start', 'asc')
+        );
+        
+        // Set up real-time listener for events
+        const unsubscribe = onSnapshot(eventsQuery, (snapshot) => {
+          console.log("Raw events data:", snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
+          
+          const eventsData = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              title: data.title,
+              description: data.description || '',
+              date: data.start?.toDate() || new Date(),
+              link: '',  // Calendar events typically don't have meeting links
+              groupId: data.groupId,
+              groupName: data.groupName || '',
+              createdBy: data.createdBy || '',
+              createdAt: data.createdAt,
+              // Mark as calendar event for UI differentiation if needed
+              isCalendarEvent: true
+            };
+          });
+          
+          // Filter out past events
+          const now = new Date();
+          now.setHours(0, 0, 0, 0);
+          
+          const upcomingEvents = eventsData.filter(event => {
+            try {
+              const eventDate = event.date;
+              
+              // Create a date object for just the date part
+              const eventDateOnly = new Date(eventDate);
+              eventDateOnly.setHours(0, 0, 0, 0);
+              
+              // Consider an event as upcoming if it's today or in the future
+              const isToday = eventDateOnly.getTime() === now.getTime();
+              const isFuture = eventDate > now;
+              
+              return isToday || isFuture;
+            } catch (e) {
+              console.error("Invalid date format:", e);
+              return false;
+            }
+          });
+          
+          console.log("Filtered upcoming calendar events:", upcomingEvents);
+          setCalendarEvents(upcomingEvents);
+        });
+        
+        return () => unsubscribe();
+      } catch (error) {
+        console.error('Error fetching calendar events:', error);
+        setError('Failed to load calendar events');
+        setShowError(true);
+      }
+    };
+    
+    fetchEvents();
+  }, [groupId]);
+
+  // Combine meetings and calendar events 
+  useEffect(() => {
+    // Merge meetings from both collections
+    const allMeetings = [
+      ...meetings.map(meeting => ({
+        ...meeting,
+        source: 'meetings' // Add a source identifier
+      })),
+      ...calendarEvents.map(event => ({
+        ...event,
+        source: 'calendar' // Add a source identifier
+      }))
+    ];
+    
+    // Sort all meetings by date
+    const sortedMeetings = allMeetings.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      return dateA - dateB;
+    });
+    
+    console.log("Combined and sorted meetings:", sortedMeetings);
+    setCombinedMeetings(sortedMeetings);
+  }, [meetings, calendarEvents]);
+
   // Fetch documents from Firestore
   useEffect(() => {
     if (!groupId) return;
@@ -490,6 +592,46 @@ export default function GroupDetails() {
     } catch (error) {
       console.error("Error deleting meeting:", error);
       setError('Failed to delete meeting: ' + error.message);
+      setShowError(true);
+    }
+  };
+
+  // Handle event deletion from the calendar events collection
+  const handleDeleteEvent = async (eventId) => {
+    if (!currentUser) {
+      setError('You must be logged in to delete an event');
+      setShowError(true);
+      return;
+    }
+    
+    try {
+      if (!window.confirm('Are you sure you want to delete this event?')) {
+        return;
+      }
+      
+      // First, get the event to check permissions
+      const eventRef = doc(db, `events/${eventId}`);
+      const eventSnap = await getDoc(eventRef);
+      
+      if (!eventSnap.exists()) {
+        throw new Error('Event not found');
+      }
+      
+      const eventData = eventSnap.data();
+      
+      // Check if the user is the creator of the event or the group creator
+      if (eventData.createdBy !== currentUser.uid && group.creatorId !== currentUser.uid) {
+        throw new Error('You do not have permission to delete this event');
+      }
+      
+      // Delete the event
+      await deleteDoc(eventRef);
+      
+      // No need to update the UI state - the Firestore listener will handle that
+      
+    } catch (error) {
+      console.error("Error deleting event:", error);
+      setError('Failed to delete event: ' + error.message);
       setShowError(true);
     }
   };
@@ -955,7 +1097,7 @@ export default function GroupDetails() {
               <Card>
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="h6">Upcoming Meetings</Typography>
+                    <Typography variant="h6">Upcoming Meetings ({combinedMeetings.length})</Typography>
                     <Button 
                       variant="contained" 
                       startIcon={<EventIcon />}
@@ -970,8 +1112,8 @@ export default function GroupDetails() {
                     maxHeight: '260px', 
                     overflow: 'auto' 
                   }}>
-                    {(meetings.length > 0) ? (
-                      meetings.map((meeting) => (
+                    {(combinedMeetings.length > 0) ? (
+                      combinedMeetings.map((meeting) => (
                         <ListItem 
                           key={meeting.id} 
                           sx={{ 
@@ -980,10 +1122,11 @@ export default function GroupDetails() {
                             borderRadius: 1,
                             flexDirection: 'column',
                             alignItems: 'flex-start',
-                            padding: 2
+                            padding: 2,
+                            borderLeft: meeting.source === 'calendar' ? `4px solid ${theme.palette.info.main}` : 'none'
                           }}
                           secondaryAction={
-                            (meeting.createdBy === currentUser?.uid || group.creatorId === currentUser?.uid) && (
+                            (((meeting.createdBy === currentUser?.uid || group.creatorId === currentUser?.uid) && meeting.source !== 'calendar') ? (
                               <IconButton 
                                 edge="end" 
                                 aria-label="delete"
@@ -991,13 +1134,54 @@ export default function GroupDetails() {
                               >
                                 <DeleteIcon />
                               </IconButton>
-                            )
+                            ) : ((meeting.source === 'calendar') && (meeting.createdBy === currentUser?.uid || group.creatorId === currentUser?.uid)) ? (
+                              <IconButton 
+                                edge="end" 
+                                aria-label="delete"
+                                onClick={() => handleDeleteEvent(meeting.id)}
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            ) : null)
                           }
                         >
                           <Box sx={{ display: 'flex', width: '100%', mb: 1 }}>
-                            <ListItemIcon sx={{ minWidth: '40px' }}><EventIcon /></ListItemIcon>
+                            <ListItemIcon sx={{ minWidth: '40px' }}>
+                              {meeting.source === 'calendar' ? 
+                                <EventIcon sx={{ color: theme.palette.info.main }} /> : 
+                                <EventIcon />
+                              }
+                            </ListItemIcon>
                             <ListItemText 
-                              primary={meeting.title} 
+                              primary={
+                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                  <Typography variant="subtitle1" sx={{ 
+                                    textShadow: meeting.source === 'calendar' ? '0px 1px 2px rgba(0,0,0,0.35)' : 'none'
+                                  }}>
+                                    {meeting.title}
+                                  </Typography>
+                                  {meeting.source === 'calendar' && (
+                                    <Tooltip title="Created from Calendar">
+                                      <Box 
+                                        component="span" 
+                                        sx={{ 
+                                          fontSize: '0.75rem', 
+                                          bgcolor: theme.palette.info.light,
+                                          color: theme.palette.info.contrastText,
+                                          borderRadius: '4px',
+                                          px: 1,
+                                          py: 0.25,
+                                          ml: 1,
+                                          boxShadow: '0px 1px 3px rgba(0,0,0,0.15)',
+                                          textShadow: '0px 1px 1px rgba(0,0,0,0.25)'
+                                        }}
+                                      >
+                                        Calendar
+                                      </Box>
+                                    </Tooltip>
+                                  )}
+                                </Box>
+                              } 
                               secondary={formatDate(meeting.date)}
                             />
                           </Box>
@@ -1014,6 +1198,7 @@ export default function GroupDetails() {
                               href={meeting.link}
                               target="_blank"
                               rel="noopener noreferrer"
+                              startIcon={<VideoCallIcon />}
                             >
                               Join Meeting
                             </Button>

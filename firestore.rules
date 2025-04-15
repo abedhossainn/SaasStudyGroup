@@ -83,6 +83,15 @@ service cloud.firestore {
         allow update: if isAuthenticated() && 
           (memberId == request.auth.uid || isGroupAdmin(groupId));
       }
+
+      // Allow access to group calendar events for group members
+      match /events/{eventId} {
+        allow read: if isAuthenticated() && isGroupMember(groupId);
+        allow create: if isAuthenticated() && isGroupMember(groupId);
+        allow update, delete: if isAuthenticated() && (
+          resource.data.creatorId == request.auth.uid || isGroupAdmin(groupId)
+        );
+      }
     }
 
     // 🔹 Notifications Collection
@@ -101,5 +110,22 @@ service cloud.firestore {
         resource.data.userId == request.auth.uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
     }
+
+    // 🔹 Calendar Events Collection
+    match /events/{eventId} {
+      // Allow read if authenticated
+      allow read: if isAuthenticated();
+      
+      // Allow create if authenticated user is the creator
+      allow create: if isAuthenticated() &&
+        request.resource.data.creatorId == request.auth.uid &&
+        request.resource.data.keys().hasAll(['title', 'start', 'end', 'creatorId']);
+      
+      // Allow update/delete if user is the creator or group admin (if it's a group event)
+      allow update, delete: if isAuthenticated() && (
+        resource.data.creatorId == request.auth.uid || 
+        (resource.data.groupId != null && isGroupAdmin(resource.data.groupId))
+      );
+    }
   }
-} 
+}
