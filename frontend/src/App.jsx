@@ -1,4 +1,3 @@
-import { useState, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './contexts/AuthContext';
@@ -26,21 +25,6 @@ const ProtectedRoute = ({ children }) => {
   
   if (!currentUser) {
     return <Navigate to="/login" />;
-  }
-
-  return children;
-};
-
-// Public Route Component (redirects to dashboard if logged in)
-const PublicRoute = ({ children }) => {
-  const { currentUser, loading } = useAuth();
-  
-  if (loading) {
-    return <div>Loading...</div>; // Show loading indicator
-  }
-  
-  if (currentUser) {
-    return <Navigate to="/dashboard" />;
   }
 
   return children;

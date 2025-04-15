@@ -209,13 +209,23 @@ export default function Dashboard() {
           p: 3,
           mb: 4,
           background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-          color: 'black' // Changed from 'white' to 'black' for better contrast
+          color: 'black', // Changed from 'white' to 'black' for better contrast
+          boxShadow: '0 4px 8px rgba(0,0,0,0.2)'
         }}
       >
-        <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: 'black' }}>
+        <Typography variant="h4" gutterBottom sx={{ 
+          fontWeight: 600, 
+          color: 'black',
+          textShadow: '0px 1px 2px rgba(255,255,255,0.5)' 
+        }}>
           Welcome back, {currentUser?.name || 'User'}!
         </Typography>
-        <Typography variant="body1" sx={{ mb: 3, maxWidth: 600, color: 'black' }}>
+        <Typography variant="body1" sx={{ 
+          mb: 3, 
+          maxWidth: 600, 
+          color: 'black',
+          textShadow: '0px 1px 1px rgba(255,255,255,0.4)'
+        }}>
           Join study groups, collaborate with peers, and achieve your academic goals together.
         </Typography>
         <Button
