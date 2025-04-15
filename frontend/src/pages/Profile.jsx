@@ -77,9 +77,16 @@ export default function Profile() {
 
       // Fetch joined groups
       const groups = await getGroups();
+      // Filter groups to find those where current user is a member
+      // Handle both possible data structures: member objects with id field or direct user IDs
       const userGroups = groups.filter(group => 
-        group.members.some(member => member.id === currentUser.uid)
+        group.members && group.members.some(member => 
+          (typeof member === 'object' && member.id === currentUser.uid) || 
+          member === currentUser.uid
+        )
       );
+      console.log("Fetched groups:", groups);
+      console.log("User joined groups:", userGroups);
       setJoinedGroups(userGroups);
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -332,60 +339,73 @@ export default function Profile() {
               Joined Groups ({joinedGroups.length})
             </Typography>
             <Grid container spacing={{ xs: 1, sm: 2, md: 3 }}>
-              {joinedGroups.map((group) => (
-                <Grid item xs={12} sm={6} md={4} key={group.id}>
-                  <Paper
-                    onClick={() => handleGroupClick(group.id)}
-                    sx={{
-                      p: { xs: 1.5, sm: 2 },
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: { xs: 1, sm: 2 },
-                      cursor: 'pointer',
-                      '&:hover': { 
-                        bgcolor: 'action.hover',
-                        transform: 'translateY(-2px)',
-                        transition: 'transform 0.2s'
-                      }
-                    }}
-                  >
-                    <Avatar 
-                      src={group.image}
-                      sx={{ 
-                        width: { xs: 40, sm: 48 }, 
-                        height: { xs: 40, sm: 48 } 
+              {joinedGroups.length === 0 ? (
+                <Grid item xs={12}>
+                  <Typography variant="body1" color="text.secondary" align="center" sx={{ py: 4 }}>
+                    You haven't joined any study groups yet.
+                  </Typography>
+                </Grid>
+              ) : (
+                joinedGroups.map((group) => (
+                  <Grid item xs={12} sm={6} md={4} key={group.id}>
+                    <Paper
+                      onClick={() => handleGroupClick(group.id)}
+                      elevation={3}
+                      sx={{
+                        p: { xs: 1.5, sm: 2 },
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: { xs: 1, sm: 2 },
+                        cursor: 'pointer',
+                        borderRadius: 2,
+                        boxShadow: 3,
+                        '&:hover': { 
+                          bgcolor: 'action.hover',
+                          transform: 'translateY(-2px)',
+                          transition: 'transform 0.2s, box-shadow 0.2s',
+                          boxShadow: 6
+                        }
                       }}
                     >
-                      <GroupIcon sx={{ fontSize: { xs: 24, sm: 28 } }} />
-                    </Avatar>
-                    <Box sx={{ overflow: 'hidden' }}>
-                      <Typography 
-                        variant="subtitle1" 
+                      <Avatar 
+                        src={group.image}
                         sx={{ 
-                          fontSize: { xs: '0.875rem', sm: '1rem' },
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
+                          width: { xs: 40, sm: 48 }, 
+                          height: { xs: 40, sm: 48 } 
                         }}
                       >
-                        {group.name}
-                      </Typography>
-                      <Typography 
-                        variant="body2" 
-                        color="text.secondary" 
-                        sx={{ 
-                          fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
-                        }}
-                      >
-                        {group.members.length} members
-                      </Typography>
-                    </Box>
-                  </Paper>
-                </Grid>
-              ))}
+                        <GroupIcon sx={{ fontSize: { xs: 24, sm: 28 } }} />
+                      </Avatar>
+                      <Box sx={{ overflow: 'hidden' }}>
+                        <Typography 
+                          variant="subtitle1" 
+                          sx={{ 
+                            fontSize: { xs: '0.875rem', sm: '1rem' },
+                            fontWeight: 'medium',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}
+                        >
+                          {group.name}
+                        </Typography>
+                        <Typography 
+                          variant="body2" 
+                          color="text.secondary" 
+                          sx={{ 
+                            fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}
+                        >
+                          {group.members?.length || 0} members
+                        </Typography>
+                      </Box>
+                    </Paper>
+                  </Grid>
+                ))
+              )}
             </Grid>
           </Grid>
         </Grid>
