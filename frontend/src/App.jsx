@@ -1,4 +1,6 @@
+import { useState, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/Layout';
@@ -19,7 +21,7 @@ const ProtectedRoute = ({ children }) => {
   const { currentUser, loading } = useAuth();
   
   if (loading) {
-    return null; // or a loading spinner
+    return <div>Loading...</div>; // Show loading indicator
   }
   
   if (!currentUser) {
@@ -34,7 +36,22 @@ const PublicRoute = ({ children }) => {
   const { currentUser, loading } = useAuth();
   
   if (loading) {
-    return null; // or a loading spinner
+    return <div>Loading...</div>; // Show loading indicator
+  }
+  
+  if (currentUser) {
+    return <Navigate to="/dashboard" />;
+  }
+
+  return children;
+};
+
+// OTP Route Component (handles both OTP and direct login)
+const AuthRoute = ({ children }) => {
+  const { currentUser, loading } = useAuth();
+  
+  if (loading) {
+    return <div>Loading...</div>; // Show loading indicator
   }
   
   if (currentUser) {
@@ -46,16 +63,29 @@ const PublicRoute = ({ children }) => {
 
 function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
+    <AuthProvider>
+      <ThemeProvider>
+        <CssBaseline />
         <Router>
           <Routes>
+            {/* Auth Routes */}
             <Route path="/login" element={
-              <PublicRoute>
+              <AuthRoute>
                 <Login />
-              </PublicRoute>
+              </AuthRoute>
+            } />
+            <Route path="/request-otp" element={
+              <AuthRoute>
+                <RequestOTP />
+              </AuthRoute>
+            } />
+            <Route path="/verify-otp" element={
+              <AuthRoute>
+                <VerifyOTP />
+              </AuthRoute>
             } />
             
+            {/* Protected Routes */}
             <Route path="/" element={
               <ProtectedRoute>
                 <Layout />
@@ -71,14 +101,12 @@ function App() {
               <Route path="group/:groupId" element={<GroupDetails />} />
             </Route>
 
-            <Route path="/request-otp" element={<RequestOTP />} />
-            <Route path="/verify-otp" element={<VerifyOTP />} />
-
+            {/* Catch-all route */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </Router>
-      </AuthProvider>
-    </ThemeProvider>
+      </ThemeProvider>
+    </AuthProvider>
   );
 }
 

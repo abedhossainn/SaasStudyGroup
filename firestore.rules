@@ -1,0 +1,105 @@
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user is accessing their own document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Helper function to check if user is a group member
+    function isGroupMember(groupId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+    }
+
+    // Helper function to check if user is group admin
+    function isGroupAdmin(groupId) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Helper function to validate message data
+    function isValidMessage() {
+      return request.resource.data.keys().hasAll(['text', 'senderId', 'senderName', 'timestamp']) &&
+        request.resource.data.text is string &&
+        request.resource.data.senderId is string &&
+        request.resource.data.senderName is string &&
+        request.resource.data.timestamp is timestamp;
+    }
+
+    // 🔹 Messages Collection
+    match /messages/{message} {
+      // Allow any authenticated user to read messages
+      allow read: if isAuthenticated();
+
+      // Allow creating new messages (sender only, required fields only)
+      allow create: if isAuthenticated() &&
+        request.resource.data.senderId == request.auth.uid &&
+        isValidMessage();
+
+      // Allow updating messages only to mark them as seen
+      allow update: if isAuthenticated() &&
+        // Only the recipient can mark as seen
+        resource.data.to == request.auth.uid &&
+        // Only the `seen` field is changing
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seen']) &&
+        request.resource.data.seen == true;
+    }
+
+    // 🔹 Users Collection
+    match /users/{userId} {
+      // Allow read if authenticated
+      allow read: if isAuthenticated();
+      
+      // Allow write if user is the owner
+      allow write: if isOwner(userId);
+      
+      // Allow update if user is the owner
+      allow update: if isOwner(userId);
+    }
+    
+    // 🔹 Groups Collection
+    match /groups/{groupId} {
+      // Allow read if authenticated
+      allow read: if isAuthenticated();
+      
+      // Allow create if authenticated and has required fields
+      allow create: if isAuthenticated() &&
+        request.resource.data.creatorId == request.auth.uid &&
+        request.resource.data.keys().hasAll(['name', 'description', 'creatorId', 'createdAt']);
+      
+      // Allow update/delete if user is the creator or admin
+      allow update, delete: if isAuthenticated() && 
+        (resource.data.creatorId == request.auth.uid || isGroupAdmin(groupId));
+      
+      // Allow members to update their own status
+      match /members/{memberId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated() && memberId == request.auth.uid;
+        allow update: if isAuthenticated() && 
+          (memberId == request.auth.uid || isGroupAdmin(groupId));
+      }
+    }
+
+    // 🔹 Notifications Collection
+    match /notifications/{notificationId} {
+      // Allow read if authenticated and notification belongs to user
+      allow read: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      
+      // Allow create if authenticated and notification is for the user
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.keys().hasAll(['type', 'message', 'timestamp']);
+      
+      // Allow update if authenticated and notification belongs to user
+      allow update: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+    }
+  }
+} 

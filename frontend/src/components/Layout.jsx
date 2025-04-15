@@ -31,6 +31,7 @@ import {
   CalendarMonth as CalendarIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { useThemeContext } from '../contexts/ThemeContext';
 import { db } from '../firebase';
 import {
   collection,
@@ -39,13 +40,14 @@ import {
   where
 } from 'firebase/firestore';
 
-const drawerWidth = 300;
+const drawerWidth = 240;
 
-export default function Layout({ toggleTheme, mode }) {
+export default function Layout() {
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, logout } = useAuth();
+  const { mode, toggleTheme } = useThemeContext();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const [open, setOpen] = useState(!isMobile);
@@ -129,17 +131,18 @@ export default function Layout({ toggleTheme, mode }) {
   ];
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', overflow: 'hidden' }}>
       {/* App Bar */}
       <AppBar
         position="fixed"
         sx={{
           zIndex: theme.zIndex.drawer + 1,
           bgcolor: theme.palette.primary.main,
-          color: theme.palette.mode === 'light' ? 'black' : 'white'
+          color: theme.palette.mode === 'light' ? 'black' : 'white',
+          width: '100%'
         }}
       >
-        <Toolbar>
+        <Toolbar sx={{ pr: { xs: 1, sm: 2 } }}>
           <IconButton
             color="inherit"
             onClick={handleDrawerToggle}
@@ -149,37 +152,60 @@ export default function Layout({ toggleTheme, mode }) {
             <MenuIcon />
           </IconButton>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
             <img src="/image.png" alt="Logo" style={{ height: 40 }} />
-            <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 600 }}>
+            <Typography 
+              variant="h6" 
+              noWrap 
+              component="div" 
+              sx={{ 
+                fontWeight: 600,
+                display: { xs: 'none', sm: 'block' }
+              }}
+            >
               Study Groups
             </Typography>
           </Box>
 
           <Box sx={{ flexGrow: 1 }} />
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 } }}>
             {/* Message notification in toolbar */}
-            <IconButton color="inherit" onClick={() => navigate('/messages')}>
+            <IconButton 
+              color="inherit" 
+              onClick={() => navigate('/messages')}
+              size="large"
+            >
               <Badge badgeContent={unreadMessageCount} color="error">
                 <MessageIcon />
               </Badge>
             </IconButton>
             
             {/* Notification icon in toolbar */}
-            <IconButton color="inherit" onClick={() => navigate('/notifications')}>
+            <IconButton 
+              color="inherit" 
+              onClick={() => navigate('/notifications')}
+              size="large"
+            >
               <Badge badgeContent={notificationCount} color="error">
                 <NotificationsIcon />
               </Badge>
             </IconButton>
             
-            <IconButton color="inherit" onClick={toggleTheme}>
+            <IconButton 
+              color="inherit" 
+              onClick={toggleTheme}
+              size="large"
+            >
               {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
             </IconButton>
 
             <IconButton
               onClick={handleProfileMenuOpen}
-              sx={{ padding: 0.5 }}
+              sx={{ 
+                padding: 0.5,
+                ml: { xs: 0.5, sm: 1 }
+              }}
             >
               <Avatar
                 src={currentUser?.avatar}
@@ -229,15 +255,13 @@ export default function Layout({ toggleTheme, mode }) {
         variant="permanent"
         open={open}
         sx={{
-          width: open ? drawerWidth : 62,
-          transition: theme.transitions.create('width', {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.enteringScreen,
-          }),
+          width: open ? drawerWidth : 72,
+          flexShrink: 0,
+          whiteSpace: 'nowrap',
           '& .MuiDrawer-paper': {
-            width: open ? drawerWidth : 62,
+            width: open ? drawerWidth : 72,
             overflowX: 'hidden',
-            transition: theme.transitions.create('width', {
+            transition: theme.transitions.create(['width'], {
               easing: theme.transitions.easing.sharp,
               duration: theme.transitions.duration.enteringScreen,
             }),
@@ -248,7 +272,10 @@ export default function Layout({ toggleTheme, mode }) {
         }}
       >
         <Toolbar />
-        <Box sx={{ overflow: 'auto', py: 2 }}>
+        <Box sx={{ 
+          overflow: 'hidden',
+          py: 2
+        }}>
           <List>
             {menuItems.map((item) => (
               <ListItem
@@ -264,6 +291,7 @@ export default function Layout({ toggleTheme, mode }) {
                   mx: 1,
                   borderRadius: 1,
                   minHeight: 48,
+                  px: 2.5,
                   justifyContent: open ? 'initial' : 'center',
                   color: theme.palette.mode === 'light' ? 'black' : 'white',
                   '&.Mui-selected': {
@@ -295,7 +323,13 @@ export default function Layout({ toggleTheme, mode }) {
                   )}
                 </ListItemIcon>
                 {open && (
-                  <ListItemText primary={item.text} />
+                  <ListItemText 
+                    primary={item.text} 
+                    sx={{ 
+                      opacity: open ? 1 : 0,
+                      overflow: 'hidden'
+                    }} 
+                  />
                 )}
               </ListItem>
             ))}
