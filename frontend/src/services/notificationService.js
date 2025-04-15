@@ -12,6 +12,7 @@ import {
   getDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { sendPushNotification } from './pushNotificationService';
 
 /**
  * Get notifications for the current user
@@ -121,6 +122,26 @@ export const createNotification = async (notification) => {
     };
     
     const docRef = await addDoc(collection(db, 'notifications'), notificationData);
+    
+    // Try to send a push notification if this is enabled for the user
+    try {
+      // Prepare the push notification payload
+      const pushNotification = {
+        id: docRef.id,
+        title: notification.type === 'message' ? 'New Message' : 
+               notification.type === 'meeting' ? 'Meeting Reminder' :
+               notification.type === 'document' ? 'New Document' :
+               'Study Group Notification',
+        content: notification.content
+      };
+      
+      // Send the push notification
+      await sendPushNotification(notification.userId, pushNotification);
+    } catch (pushError) {
+      // Don't fail the notification creation if push fails
+      console.error('Error sending push notification:', pushError);
+    }
+    
     return docRef.id;
   } catch (error) {
     console.error('Error creating notification:', error);

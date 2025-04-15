@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
@@ -17,14 +17,20 @@ import {
   DialogActions,
   DialogContent,
   DialogContentText,
-  DialogTitle
+  DialogTitle,
+  CircularProgress,
+  TextField
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { useThemeContext } from '../contexts/ThemeContext';
+import { getPushNotificationSettings, updatePushNotificationSettings } from '../services/userPreferenceService';
+import { getUserData, deleteUserAccount } from '../services/userAccountService';
+import { useNavigate } from 'react-router-dom';
 
 export default function Settings() {
   const { currentUser } = useAuth();
   const { mode, toggleTheme } = useThemeContext();
+  const navigate = useNavigate();
   
   const [settings, setSettings] = useState({
     pushNotifications: false,
@@ -36,6 +42,15 @@ export default function Settings() {
     twoFactorAuth: false,
     autoLogout: false
   });
+  
+  // Add loading state
+  const [setLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  
+  // State for authentication
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   
   // State for feedback messages
   const [snackbar, setSnackbar] = useState({
@@ -52,21 +67,64 @@ export default function Settings() {
     action: null
   });
 
-  const handleSettingChange = (setting) => (event) => {
+  // Fetch current push notification settings when component loads
+  useEffect(() => {
+    const fetchSettings = async () => {
+      if (currentUser?.uid) {
+        try {
+          const notificationsEnabled = await getPushNotificationSettings(currentUser.uid);
+          setSettings(prev => ({
+            ...prev,
+            pushNotifications: notificationsEnabled
+          }));
+        } catch (error) {
+          console.error('Error fetching push notification settings:', error);
+          setSnackbar({
+            open: true,
+            message: 'Error loading notification settings',
+            severity: 'error'
+          });
+        }
+      }
+    };
+    
+    fetchSettings();
+  }, [currentUser]);
+
+  const handleSettingChange = (setting) => async (event) => {
+    const newValue = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+    
     setSettings(prev => ({
       ...prev,
-      [setting]: event.target.type === 'checkbox' ? event.target.checked : event.target.value
+      [setting]: newValue
     }));
-  };
-  
-  const handleSaveSettings = () => {
-    // Here you would add the API call to save settings to the backend
-    console.log('Saving settings:', settings);
-    setSnackbar({
-      open: true,
-      message: 'Settings saved successfully!',
-      severity: 'success'
-    });
+    
+    // For push notifications, save immediately when toggled
+    if (setting === 'pushNotifications' && currentUser?.uid) {
+      try {
+        setLoading(true);
+        await updatePushNotificationSettings(currentUser.uid, newValue);
+        setSnackbar({
+          open: true,
+          message: `Push notifications ${newValue ? 'enabled' : 'disabled'}`,
+          severity: 'success'
+        });
+      } catch (error) {
+        console.error('Error updating push notification setting:', error);
+        // Revert the setting if it failed
+        setSettings(prev => ({
+          ...prev,
+          [setting]: !newValue
+        }));
+        setSnackbar({
+          open: true,
+          message: 'Failed to update push notification setting',
+          severity: 'error'
+        });
+      } finally {
+        setLoading(false);
+      }
+    }
   };
   
   const handleDeleteAccount = () => {
@@ -78,17 +136,82 @@ export default function Settings() {
     });
   };
   
-  const handleConfirmAction = () => {
+  const handleConfirmAction = async () => {
     if (confirmDialog.action === 'delete') {
-      // API call to delete account would go here
-      console.log('Account deletion requested');
-      setSnackbar({
-        open: true,
-        message: 'Account deletion process initiated. You will receive a confirmation email.',
-        severity: 'info'
-      });
+      if (!password) {
+        setPasswordError('Password is required to delete account');
+        return;
+      }
+      setDeleteLoading(true);
+      try {
+        await deleteUserAccount(currentUser.uid, password);
+        setSnackbar({
+          open: true,
+          message: 'Account deleted successfully',
+          severity: 'success'
+        });
+        
+        // Navigate to login page without calling logout first
+        // This avoids the error when trying to access currentUser.uid after deletion
+        navigate('/login');
+      } catch (error) {
+        console.error('Error deleting account:', error);
+        setSnackbar({
+          open: true,
+          message: 'Failed to delete account: ' + error.message,
+          severity: 'error'
+        });
+      } finally {
+        setDeleteLoading(false);
+      }
     }
     setConfirmDialog({ ...confirmDialog, open: false });
+  };
+
+  const handleDownloadData = async () => {
+    if (!currentUser?.uid) {
+      setSnackbar({
+        open: true,
+        message: 'You must be logged in to download your data',
+        severity: 'error'
+      });
+      return;
+    }
+    
+    setDataLoading(true);
+    
+    try {
+      // Fetch all user data
+      const userData = await getUserData(currentUser.uid);
+      
+      // Convert to JSON and create downloadable file
+      const dataStr = JSON.stringify(userData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      
+      // Create a download link and trigger the download
+      const downloadLink = document.createElement('a');
+      downloadLink.href = url;
+      downloadLink.download = `study_group_data_export_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      
+      setSnackbar({
+        open: true,
+        message: 'Your data has been downloaded successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error downloading user data:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to download your data: ' + error.message,
+        severity: 'error'
+      });
+    } finally {
+      setDataLoading(false);
+    }
   };
 
   const settingSections = [
@@ -344,14 +467,15 @@ export default function Settings() {
           <Stack spacing={{ xs: 1, sm: 1.5, md: 2 }} sx={{ mt: { xs: 1.5, sm: 2 } }}>
             <Button 
               variant="outlined" 
-              color="primary"
+              color="success"
               aria-label="Download your data"
+              onClick={handleDownloadData}
               sx={{ 
                 py: { xs: 0.75, sm: 1, md: 1.5 },
                 fontSize: { xs: '0.813rem', sm: '0.875rem', md: '1rem' }
               }}
             >
-              Download Your Data
+              {dataLoading ? <CircularProgress size={24} color="success" /> : 'Download Your Data'}
             </Button>
             <Button 
               variant="outlined" 
@@ -367,54 +491,6 @@ export default function Settings() {
             </Button>
           </Stack>
         </Paper>
-
-        {/* Action Buttons */}
-        <Stack 
-          direction={{ xs: 'column', sm: 'row' }} 
-          spacing={{ xs: 1, sm: 1.5, md: 2 }} 
-          sx={{ mt: { xs: 1.5, sm: 2, md: 3 } }}
-        >
-          <Button
-            variant="contained"
-            onClick={handleSaveSettings}
-            fullWidth
-            sx={{
-              py: { xs: 0.75, sm: 1, md: 1.5 },
-              fontSize: { xs: '0.813rem', sm: '0.875rem', md: '1rem' }
-            }}
-            aria-label="Save changes"
-          >
-            Save Changes
-          </Button>
-          <Button
-            variant="outlined"
-            onClick={() => {
-              setSettings({
-                pushNotifications: false,
-                language: 'en',
-                timeZone: 'UTC',
-                calendarView: 'month',
-                sessionTimeout: '30m',
-                enableStudyTimer: false,
-                twoFactorAuth: false,
-                autoLogout: false
-              });
-              setSnackbar({
-                open: true,
-                message: 'Settings reset to default',
-                severity: 'info'
-              });
-            }}
-            fullWidth
-            sx={{
-              py: { xs: 0.75, sm: 1, md: 1.5 },
-              fontSize: { xs: '0.813rem', sm: '0.875rem', md: '1rem' }
-            }}
-            aria-label="Reset to default settings"
-          >
-            Reset to Default
-          </Button>
-        </Stack>
       </Stack>
       
       {/* Feedback Snackbar */}
@@ -463,6 +539,18 @@ export default function Settings() {
           >
             {confirmDialog.message}
           </DialogContentText>
+          {confirmDialog.action === 'delete' && (
+            <TextField
+              label="Password"
+              type="password"
+              fullWidth
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              error={!!passwordError}
+              helperText={passwordError}
+              sx={{ mt: 2 }}
+            />
+          )}
         </DialogContent>
         <DialogActions sx={{ p: { xs: 2, md: 3 } }}>
           <Button 
@@ -476,9 +564,10 @@ export default function Settings() {
             onClick={handleConfirmAction} 
             color="error" 
             autoFocus
+            disabled={deleteLoading}
             sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}
           >
-            Confirm
+            {deleteLoading ? <CircularProgress size={24} /> : 'Confirm'}
           </Button>
         </DialogActions>
       </Dialog>
