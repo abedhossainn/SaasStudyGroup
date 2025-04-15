@@ -134,7 +134,9 @@ export default function Settings() {
           type: 'switch'
         }
       ]
-    },
+    }
+    // Preferences section commented out
+    /*
     {
       title: 'Preferences',
       settings: [
@@ -176,105 +178,147 @@ export default function Settings() {
         }
       ]
     }
+    */
   ];
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
+    <Box 
+      sx={{ 
+        p: { xs: 1.5, sm: 2, md: 3 },
+        maxWidth: '100%',
+        overflowX: 'hidden'
+      }}
+    >
       {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom>
+      <Box sx={{ mb: { xs: 2, sm: 3, md: 4 } }}>
+        <Typography 
+          variant="h4" 
+          gutterBottom 
+          sx={{ 
+            fontSize: { xs: '1.25rem', sm: '1.5rem', md: '2.125rem' },
+            wordBreak: 'break-word'
+          }}
+        >
           Settings
         </Typography>
-        <Typography variant="body1" color="text.secondary">
+        <Typography 
+          variant="body1" 
+          color="text.secondary" 
+          sx={{ 
+            fontSize: { xs: '0.813rem', sm: '0.875rem', md: '1rem' },
+            wordBreak: 'break-word'
+          }}
+        >
           Manage your account settings and preferences
         </Typography>
       </Box>
 
       {/* Settings Sections */}
-      <Stack spacing={3} sx={{ maxWidth: 800, mx: 'auto' }}>
+      <Stack 
+        spacing={{ xs: 1.5, sm: 2, md: 3 }} 
+        sx={{ 
+          maxWidth: { xs: '100%', sm: '600px', md: '800px' }, 
+          mx: 'auto',
+          '& .MuiPaper-root': {
+            width: '100%'
+          }
+        }}
+      >
         {settingSections.map((section) => (
-          <Paper key={section.title} sx={{ p: { xs: 2, md: 3 }, borderRadius: 2 }}>
-            <Typography variant="h6" gutterBottom color="primary">
+          <Paper 
+            key={section.title} 
+            sx={{ 
+              p: { xs: 1.5, sm: 2, md: 3 }, 
+              borderRadius: { xs: 1, sm: 2 },
+              width: '100%'
+            }}
+          >
+            <Typography 
+              variant="h6" 
+              gutterBottom 
+              color="primary" 
+              sx={{ 
+                fontSize: { xs: '1rem', sm: '1.1rem', md: '1.25rem' },
+                wordBreak: 'break-word'
+              }}
+            >
               {section.title}
             </Typography>
             <List disablePadding>
               {section.settings.map((setting, index) => (
                 <Box key={setting.name}>
                   {index > 0 && <Divider />}
-                  <ListItem sx={{ px: 0, py: 1.5 }}>
-                    {setting.type === 'switch' ? (
+                  <ListItem 
+                    sx={{ 
+                      px: { xs: 0.5, sm: 1, md: 1.5 }, 
+                      py: { xs: 1.5, sm: 2 },
+                      flexDirection: { xs: 'column', sm: 'row' },
+                      alignItems: { xs: 'flex-start', sm: 'center' },
+                      gap: { xs: 0.5, sm: 1 },
+                      position: 'relative'
+                    }}
+                  >
+                    {setting.type === 'switch' || setting.type === 'theme-switch' ? (
                       <>
                         <ListItemText
                           primary={setting.label}
                           secondary={setting.description}
                           primaryTypographyProps={{
-                            fontWeight: 500
+                            fontWeight: 500,
+                            fontSize: { xs: '0.938rem', sm: '1rem' },
+                            mb: { xs: 0.25, sm: 0.5 },
+                            wordBreak: 'break-word'
+                          }}
+                          secondaryTypographyProps={{
+                            fontSize: { xs: '0.75rem', sm: '0.813rem' },
+                            wordBreak: 'break-word',
+                            pr: { sm: 8 }
+                          }}
+                          sx={{
+                            m: 0,
+                            flex: 1,
+                            width: '100%',
+                            maxWidth: { sm: 'calc(100% - 58px)' }
                           }}
                         />
-                        <ListItemSecondaryAction>
+                        <ListItemSecondaryAction 
+                          sx={{ 
+                            right: { xs: '8px', sm: '16px' },
+                            top: { xs: 'auto', sm: '50%' },
+                            transform: { xs: 'none', sm: 'translateY(-50%)' },
+                            position: { xs: 'relative', sm: 'absolute' },
+                            mt: { xs: 1, sm: 0 }
+                          }}
+                        >
                           <Switch
                             edge="end"
-                            checked={settings[setting.name]}
-                            onChange={handleSettingChange(setting.name)}
+                            checked={setting.type === 'theme-switch' ? mode === 'dark' : settings[setting.name]}
+                            onChange={setting.type === 'theme-switch' ? toggleTheme : handleSettingChange(setting.name)}
                             color="primary"
+                            size={window.innerWidth < 600 ? "small" : "medium"}
                             inputProps={{ 'aria-label': `Toggle ${setting.label}` }}
                           />
                         </ListItemSecondaryAction>
                       </>
-                    ) : setting.type === 'select' ? (
-                      <FormControlLabel
-                        control={
-                          <Select
-                            size="small"
-                            value={settings[setting.name]}
-                            onChange={handleSettingChange(setting.name)}
-                            sx={{ minWidth: 150, ml: 2 }}
-                            aria-label={`Select ${setting.label}`}
-                          >
-                            {setting.options.map((option) => (
-                              <MenuItem key={option.value} value={option.value}>
-                                {option.label}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        }
-                        label={setting.label}
-                        labelPlacement="start"
+                    ) : setting.type === 'info' ? (
+                      <ListItemText
+                        primary={setting.label}
+                        secondary={setting.description}
+                        primaryTypographyProps={{
+                          fontWeight: 500,
+                          fontSize: { xs: '0.938rem', sm: '1rem' },
+                          mb: { xs: 0.25, sm: 0.5 },
+                          wordBreak: 'break-word'
+                        }}
+                        secondaryTypographyProps={{
+                          fontSize: { xs: '0.75rem', sm: '0.813rem' },
+                          wordBreak: 'break-word'
+                        }}
                         sx={{
-                          mx: 0,
-                          width: '100%',
-                          justifyContent: 'space-between'
+                          m: 0,
+                          flex: 1
                         }}
                       />
-                    ) : setting.type === 'info' ? (
-                      <>
-                        <ListItemText
-                          primary={setting.label}
-                          secondary={setting.description}
-                          primaryTypographyProps={{
-                            fontWeight: 500
-                          }}
-                        />
-                      </>
-                    ) : setting.type === 'theme-switch' ? (
-                      <>
-                        <ListItemText
-                          primary={setting.label}
-                          secondary={setting.description}
-                          primaryTypographyProps={{
-                            fontWeight: 500
-                          }}
-                        />
-                        <ListItemSecondaryAction>
-                          <Switch
-                            edge="end"
-                            checked={mode === 'dark'}
-                            onChange={toggleTheme}
-                            color="primary"
-                            inputProps={{ 'aria-label': `Toggle ${setting.label}` }}
-                          />
-                        </ListItemSecondaryAction>
-                      </>
                     ) : null}
                   </ListItem>
                 </Box>
@@ -284,15 +328,32 @@ export default function Settings() {
         ))}
 
         {/* Data Management Section */}
-        <Paper sx={{ p: { xs: 2, md: 3 }, borderRadius: 2 }}>
-          <Typography variant="h6" gutterBottom color="primary">
+        <Paper 
+          sx={{ 
+            p: { xs: 1.5, sm: 2, md: 3 }, 
+            borderRadius: { xs: 1, sm: 2 }
+          }}
+        >
+          <Typography 
+            variant="h6" 
+            gutterBottom 
+            color="primary" 
+            sx={{ 
+              fontSize: { xs: '1rem', sm: '1.1rem', md: '1.25rem' },
+              wordBreak: 'break-word'
+            }}
+          >
             Data Management
           </Typography>
-          <Stack spacing={2} sx={{ mt: 2 }}>
+          <Stack spacing={{ xs: 1, sm: 1.5, md: 2 }} sx={{ mt: { xs: 1.5, sm: 2 } }}>
             <Button 
               variant="outlined" 
               color="primary"
               aria-label="Download your data"
+              sx={{ 
+                py: { xs: 0.75, sm: 1, md: 1.5 },
+                fontSize: { xs: '0.813rem', sm: '0.875rem', md: '1rem' }
+              }}
             >
               Download Your Data
             </Button>
@@ -301,6 +362,10 @@ export default function Settings() {
               color="error"
               onClick={handleDeleteAccount}
               aria-label="Delete your account"
+              sx={{ 
+                py: { xs: 0.75, sm: 1, md: 1.5 },
+                fontSize: { xs: '0.813rem', sm: '0.875rem', md: '1rem' }
+              }}
             >
               Delete Account
             </Button>
@@ -308,14 +373,18 @@ export default function Settings() {
         </Paper>
 
         {/* Action Buttons */}
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 2 }}>
+        <Stack 
+          direction={{ xs: 'column', sm: 'row' }} 
+          spacing={{ xs: 1, sm: 1.5, md: 2 }} 
+          sx={{ mt: { xs: 1.5, sm: 2, md: 3 } }}
+        >
           <Button
             variant="contained"
             onClick={handleSaveSettings}
             fullWidth
             sx={{
-              py: 1.5,
-              fontSize: '1rem'
+              py: { xs: 0.75, sm: 1, md: 1.5 },
+              fontSize: { xs: '0.813rem', sm: '0.875rem', md: '1rem' }
             }}
             aria-label="Save changes"
           >
@@ -324,7 +393,6 @@ export default function Settings() {
           <Button
             variant="outlined"
             onClick={() => {
-              // Reset settings
               setSettings({
                 pushNotifications: false,
                 language: 'en',
@@ -343,8 +411,8 @@ export default function Settings() {
             }}
             fullWidth
             sx={{
-              py: 1.5,
-              fontSize: '1rem'
+              py: { xs: 0.75, sm: 1, md: 1.5 },
+              fontSize: { xs: '0.813rem', sm: '0.875rem', md: '1rem' }
             }}
             aria-label="Reset to default settings"
           >
@@ -359,11 +427,15 @@ export default function Settings() {
         autoHideDuration={6000} 
         onClose={() => setSnackbar({ ...snackbar, open: false })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        sx={{ bottom: { xs: 16, sm: 24 } }}
       >
         <Alert 
           onClose={() => setSnackbar({ ...snackbar, open: false })} 
           severity={snackbar.severity}
-          sx={{ width: '100%' }}
+          sx={{ 
+            width: '100%',
+            fontSize: { xs: '0.875rem', md: '1rem' }
+          }}
         >
           {snackbar.message}
         </Alert>
@@ -375,18 +447,41 @@ export default function Settings() {
         onClose={() => setConfirmDialog({ ...confirmDialog, open: false })}
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-description"
+        sx={{
+          '& .MuiDialog-paper': {
+            width: { xs: '90%', sm: 'auto' },
+            m: { xs: 2, sm: 3 }
+          }
+        }}
       >
-        <DialogTitle id="confirm-dialog-title">{confirmDialog.title}</DialogTitle>
+        <DialogTitle 
+          id="confirm-dialog-title"
+          sx={{ fontSize: { xs: '1.1rem', md: '1.25rem' } }}
+        >
+          {confirmDialog.title}
+        </DialogTitle>
         <DialogContent>
-          <DialogContentText id="confirm-dialog-description">
+          <DialogContentText 
+            id="confirm-dialog-description"
+            sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}
+          >
             {confirmDialog.message}
           </DialogContentText>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmDialog({ ...confirmDialog, open: false })} color="primary">
+        <DialogActions sx={{ p: { xs: 2, md: 3 } }}>
+          <Button 
+            onClick={() => setConfirmDialog({ ...confirmDialog, open: false })} 
+            color="primary"
+            sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}
+          >
             Cancel
           </Button>
-          <Button onClick={handleConfirmAction} color="error" autoFocus>
+          <Button 
+            onClick={handleConfirmAction} 
+            color="error" 
+            autoFocus
+            sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}
+          >
             Confirm
           </Button>
         </DialogActions>

@@ -1,6 +1,9 @@
-import React, { createContext, useState, useContext, useMemo } from 'react';
+import React, { createContext, useState, useContext, useMemo, useEffect } from 'react';
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material';
 import CssBaseline from '@mui/material/CssBaseline';
+import { useAuth } from './AuthContext';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 // Create the theme context
 const ThemeContext = createContext();
@@ -99,11 +102,43 @@ const getThemeSettings = (mode) => ({
 
 // Theme provider component
 export const ThemeProvider = ({ children }) => {
+  const { currentUser } = useAuth();
   const [mode, setMode] = useState('light');
   
+  // Load user's theme preference on mount
+  useEffect(() => {
+    const loadUserTheme = async () => {
+      if (currentUser?.uid) {
+        const userRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userRef);
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          if (userData.settings?.darkMode) {
+            setMode('dark');
+          }
+        }
+      }
+    };
+    
+    loadUserTheme();
+  }, [currentUser]);
+  
   // Toggle theme function
-  const toggleTheme = () => {
-    setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
+  const toggleTheme = async () => {
+    const newMode = mode === 'light' ? 'dark' : 'light';
+    setMode(newMode);
+    
+    // Save theme preference to Firestore
+    if (currentUser?.uid) {
+      try {
+        const userRef = doc(db, 'users', currentUser.uid);
+        await updateDoc(userRef, {
+          'settings.darkMode': newMode === 'dark'
+        });
+      } catch (error) {
+        console.error('Error saving theme preference:', error);
+      }
+    }
   };
   
   // Create theme based on current mode

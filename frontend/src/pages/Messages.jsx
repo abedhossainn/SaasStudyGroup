@@ -12,9 +12,16 @@ import {
   IconButton,
   Divider,
   Grid,
-  Badge
+  Badge,
+  Dialog,
+  AppBar,
+  Toolbar,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import { Send as SendIcon } from '@mui/icons-material';
+import CloseIcon from '@mui/icons-material/Close';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 import { db, auth } from '../firebase';
 import {
@@ -47,6 +54,10 @@ export default function Messages() {
   
   // Flag to track if we need to scroll to bottom
   const shouldScrollToBottomRef = useRef(false);
+
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [mobileDialogOpen, setMobileDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -279,6 +290,111 @@ export default function Messages() {
     return prefix + text;
   };
 
+  // Add effect to handle mobile dialog
+  useEffect(() => {
+    if (selectedUser && isMobile) {
+      setMobileDialogOpen(true);
+    }
+  }, [selectedUser, isMobile]);
+
+  const handleCloseMobileDialog = () => {
+    setMobileDialogOpen(false);
+    setSelectedUser(null);
+  };
+
+  // Chat content component to avoid duplication
+  const ChatContent = () => (
+    <>
+      <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+        <Typography variant="h6">{selectedUser.name}</Typography>
+        <Typography variant="body2" color="text.secondary">
+          {selectedUser.typingTo === currentUserId
+            ? 'Typing...'
+            : selectedUser.status === 'online'
+              ? 'Online'
+              : selectedUser.lastSeen
+                ? `Last seen ${formatDistanceToNow(selectedUser.lastSeen.toDate())} ago`
+              : 'Offline'}
+        </Typography>
+      </Box>
+
+      <Box 
+        ref={messagesContainerRef}
+        sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}
+      >
+        {messages.map((msg, index) => (
+          <Box key={msg.id}>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: msg.senderId === currentUserId ? 'flex-end' : 'flex-start',
+                mb: 1,
+              }}
+            >
+              <Paper
+                sx={{
+                  p: 1,
+                  backgroundColor: msg.senderId === currentUserId ? 'primary.light' : 'grey.100',
+                  maxWidth: '70%',
+                }}
+              >
+                <Typography variant="body2">{msg.text}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {msg.timestamp?.toDate().toLocaleTimeString()}
+                </Typography>
+              </Paper>
+            </Box>
+
+            {index === messages.length - 1 &&
+              msg.senderId === currentUserId &&
+              msg.seen && (
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', pr: 1 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      fontStyle: 'italic',
+                      fontSize: '0.75rem',
+                      mt: '-4px',
+                    }}
+                  >
+                    Seen
+                  </Typography>
+                </Box>
+            )}
+          </Box>
+        ))}
+        <div ref={chatEndRef} />
+      </Box>
+
+      <Box
+        component="form"
+        onSubmit={handleSendMessage}
+        sx={{
+          p: 2,
+          borderTop: 1,
+          borderColor: 'divider',
+          display: 'flex',
+          gap: 1,
+        }}
+      >
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Type a message..."
+          value={newMessage}
+          onChange={(e) => {
+            setNewMessage(e.target.value);
+            handleTyping();
+          }}
+        />
+        <IconButton color="primary" type="submit">
+          <SendIcon />
+        </IconButton>
+      </Box>
+    </>
+  );
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
@@ -311,7 +427,6 @@ export default function Messages() {
                     selected={selectedUser?.id === user.id}
                     onClick={() => {
                       setSelectedUser(user);
-                      // Set flag to scroll to bottom when selecting a user
                       shouldScrollToBottomRef.current = true;
                     }}
                   >
@@ -349,120 +464,60 @@ export default function Messages() {
           </Paper>
         </Grid>
 
-        {/* Chat Area */}
-        <Grid item xs={12} md={8}>
-          <Paper sx={{ height: '70vh', display: 'flex', flexDirection: 'column' }}>
-            {selectedUser ? (
-              <>
-                <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-                  <Typography variant="h6">{selectedUser.name}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {selectedUser.typingTo === currentUserId
-                      ? 'Typing...'
-                      : selectedUser.status === 'online'
-                        ? 'Online'
-                        : selectedUser.lastSeen
-                          ? `Last seen ${formatDistanceToNow(selectedUser.lastSeen.toDate())} ago`
-                        : 'Offline'}
-                  </Typography>
-                </Box>
-
-                <Box 
-                  ref={messagesContainerRef}
-                  sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}
-                >
-                  {messages.map((msg, index) => (
-                    <Box key={msg.id}>
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          justifyContent:
-                            msg.senderId === currentUserId ? 'flex-end' : 'flex-start',
-                          mb: 1,
-                        }}
-                      >
-                        <Paper
-                          sx={{
-                            p: 1,
-                            backgroundColor:
-                              msg.senderId === currentUserId ? 'primary.light' : 'grey.100',
-                            maxWidth: '70%',
-                          }}
-                        >
-                          <Typography variant="body2">{msg.text}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {msg.timestamp?.toDate().toLocaleTimeString()}
-                          </Typography>
-                        </Paper>
-                      </Box>
-
-                      {/* 👁️ Seen indicator for last message sent by current user */}
-                      {index === messages.length - 1 &&
-                        msg.senderId === currentUserId &&
-                        msg.seen && (
-                          <Box sx={{ display: 'flex', justifyContent: 'flex-end', pr: 1 }}>
-                            <Typography
-                              variant="caption"
-                              sx={{
-                                color: 'text.secondary',
-                                fontStyle: 'italic',
-                                fontSize: '0.75rem',
-                                mt: '-4px',
-                              }}
-                            >
-                              Seen
-                            </Typography>
-                          </Box>
-                      )}
-                    </Box>
-                  ))}
-                  {/* This is the empty div that will be scrolled to */}
-                  <div ref={chatEndRef} />
-                </Box>
-
+        {/* Desktop Chat Area */}
+        {!isMobile && (
+          <Grid item xs={12} md={8}>
+            <Paper sx={{ height: '70vh', display: 'flex', flexDirection: 'column' }}>
+              {selectedUser ? (
+                <ChatContent />
+              ) : (
                 <Box
-                  component="form"
-                  onSubmit={handleSendMessage}
                   sx={{
-                    p: 2,
-                    borderTop: 1,
-                    borderColor: 'divider',
+                    height: '100%',
                     display: 'flex',
-                    gap: 1,
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
                 >
-                  <TextField
-                    size="small"
-                    fullWidth
-                    placeholder="Type a message..."
-                    value={newMessage}
-                    onChange={(e) => {
-                      setNewMessage(e.target.value);
-                      handleTyping();
-                    }}
-                  />
-                  <IconButton color="primary" type="submit">
-                    <SendIcon />
-                  </IconButton>
+                  <Typography color="text.secondary">
+                    Select a contact to start messaging
+                  </Typography>
                 </Box>
-              </>
-            ) : (
-              <Box
-                sx={{
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Typography color="text.secondary">
-                  Select a contact to start messaging
-                </Typography>
-              </Box>
-            )}
-          </Paper>
-        </Grid>
+              )}
+            </Paper>
+          </Grid>
+        )}
       </Grid>
+
+      {/* Mobile Chat Dialog */}
+      <Dialog
+        fullScreen
+        open={isMobile && mobileDialogOpen}
+        onClose={handleCloseMobileDialog}
+      >
+        {selectedUser && (
+          <>
+            <AppBar sx={{ position: 'relative' }}>
+              <Toolbar>
+                <IconButton
+                  edge="start"
+                  color="inherit"
+                  onClick={handleCloseMobileDialog}
+                  aria-label="close"
+                >
+                  <ArrowBackIcon />
+                </IconButton>
+                <Typography sx={{ ml: 2, flex: 1 }} variant="h6">
+                  {selectedUser.name}
+                </Typography>
+              </Toolbar>
+            </AppBar>
+            <Box sx={{ height: 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column' }}>
+              <ChatContent />
+            </Box>
+          </>
+        )}
+      </Dialog>
     </Box>
   );
 }

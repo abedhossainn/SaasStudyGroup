@@ -279,18 +279,52 @@ export default function Calendar() {
   };
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h5" component="h1" sx={{ fontWeight: 600 }}>
+    <Box sx={{ 
+      p: { xs: 1, sm: 2, md: 3 },
+      width: '100%',
+      overflowX: 'hidden'
+    }}>
+      <Paper sx={{ 
+        p: { xs: 1, sm: 2, md: 3 }, 
+        mb: 3,
+        overflowX: 'auto'
+      }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between', 
+          alignItems: { xs: 'stretch', sm: 'center' },
+          gap: { xs: 2, sm: 0 },
+          mb: 3 
+        }}>
+          <Typography 
+            variant="h5" 
+            component="h1" 
+            sx={{ 
+              fontWeight: 600,
+              fontSize: { xs: '1.25rem', sm: '1.5rem' }
+            }}
+          >
             Calendar
           </Typography>
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          <Box sx={{ 
+            display: 'flex', 
+            gap: 2,
+            flexDirection: { xs: 'column', sm: 'row' },
+            width: { xs: '100%', sm: 'auto' }
+          }}>
             <ToggleButtonGroup
               value={view}
               exclusive
               onChange={handleViewChange}
               aria-label="calendar view"
+              size="small"
+              sx={{
+                display: 'flex',
+                '& .MuiToggleButton-root': {
+                  flex: { xs: 1, sm: 'initial' }
+                }
+              }}
             >
               <ToggleButton value="month" aria-label="month view">
                 <MonthIcon />
@@ -306,13 +340,45 @@ export default function Calendar() {
               variant="contained"
               startIcon={<AddIcon />}
               onClick={handleDialogOpen}
+              fullWidth={false}
+              size="small"
+              sx={{ width: { xs: '100%', sm: 'auto' } }}
             >
               Schedule Meeting
             </Button>
           </Box>
         </Box>
 
-        <Box sx={calendarStyle}>
+        <Box sx={{
+          ...calendarStyle,
+          '.rbc-calendar': {
+            ...calendarStyle['.rbc-calendar'],
+            minHeight: { xs: 500, sm: 600 },
+            maxWidth: '100%',
+            overflowX: 'auto'
+          },
+          '.rbc-toolbar': {
+            flexWrap: 'wrap',
+            gap: 1,
+            mb: 2,
+            justifyContent: { xs: 'center', sm: 'space-between' }
+          },
+          '.rbc-toolbar-label': {
+            margin: { xs: '8px 0', sm: 0 }
+          },
+          '.rbc-header': {
+            padding: { xs: '4px', sm: '8px' },
+            fontSize: { xs: '0.75rem', sm: '0.9rem' }
+          },
+          '.rbc-date-cell': {
+            padding: { xs: '2px', sm: '4px' },
+            fontSize: { xs: '0.75rem', sm: '0.9rem' }
+          },
+          '.rbc-event': {
+            padding: { xs: '1px 2px', sm: '2px 4px' },
+            fontSize: { xs: '0.75rem', sm: '0.875rem' }
+          }
+        }}>
           <BigCalendar
             localizer={localizer}
             events={events}
@@ -320,7 +386,11 @@ export default function Calendar() {
             endAccessor="end"
             view={view}
             onView={setView}
-            style={{ height: 'calc(100vh - 250px)' }}
+            style={{ 
+              height: 'calc(100vh - 250px)',
+              minHeight: '500px',
+              maxWidth: '100%'
+            }}
             views={['month', 'week', 'day']}
             popup
             selectable

@@ -305,35 +305,80 @@ export function AuthProvider({ children }) {
         let userCredential;
         if (isSignup) {
           console.log('Creating new user account');
-          // New user - create account with email/password
-          userCredential = await createUserWithEmailAndPassword(
-            auth,
-            email,
-            password
-          );
-          
-          console.log('New user created successfully');
-          // Create user document
-          const userRef = doc(db, 'users', userCredential.user.uid);
-          await setDoc(userRef, {
-            email: email,
-            displayName: pendingSignup.displayName || email.split('@')[0],
-            createdAt: serverTimestamp(),
-            photoURL: null,
-            status: 'online',
-            lastSeen: serverTimestamp(),
-            groups: [],
-            notifications: [],
-            settings: {
-              emailNotifications: true,
-              darkMode: false
+          try {
+            // New user - create account with email/password
+            userCredential = await createUserWithEmailAndPassword(
+              auth,
+              email,
+              password
+            );
+            
+            console.log('New user created successfully');
+            // Create user document
+            const userRef = doc(db, 'users', userCredential.user.uid);
+            await setDoc(userRef, {
+              email: email,
+              displayName: pendingSignup?.displayName || email.split('@')[0],
+              createdAt: serverTimestamp(),
+              photoURL: null,
+              status: 'online',
+              lastSeen: serverTimestamp(),
+              groups: [],
+              notifications: [],
+              settings: {
+                emailNotifications: true,
+                darkMode: false
+              }
+            });
+
+            // Clean up localStorage
+            window.localStorage.removeItem('pendingSignup');
+            window.localStorage.removeItem('pendingLogin');
+          } catch (createError) {
+            console.error('Error creating user:', createError);
+            if (createError.code === 'auth/email-already-in-use') {
+              // If user already exists, try to sign them in
+              console.log('User already exists, attempting to sign in');
+              userCredential = await signInWithEmailAndPassword(
+                auth,
+                email,
+                password
+              );
+              
+              // Update user document
+              const userRef = doc(db, 'users', userCredential.user.uid);
+              const userDoc = await getDoc(userRef);
+              
+              if (userDoc.exists()) {
+                await updateDoc(userRef, {
+                  status: 'online',
+                  lastSeen: serverTimestamp()
+                });
+              } else {
+                // Create user document if it doesn't exist
+                await setDoc(userRef, {
+                  email: email,
+                  displayName: pendingSignup?.displayName || email.split('@')[0],
+                  createdAt: serverTimestamp(),
+                  photoURL: null,
+                  status: 'online',
+                  lastSeen: serverTimestamp(),
+                  groups: [],
+                  notifications: [],
+                  settings: {
+                    emailNotifications: true,
+                    darkMode: false
+                  }
+                });
+              }
+              
+              // Clean up localStorage
+              window.localStorage.removeItem('pendingSignup');
+              window.localStorage.removeItem('pendingLogin');
+            } else {
+              throw createError;
             }
-          });
-
-          // Clean up localStorage
-          window.localStorage.removeItem('pendingSignup');
-          window.localStorage.removeItem('pendingLogin');
-
+          }
         } else {
           console.log('Signing in existing user');
           // Existing user - sign in with email/password

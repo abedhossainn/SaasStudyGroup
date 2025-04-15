@@ -35,6 +35,34 @@ otp_storage = {}
 def home():
     return "Hello, Render!"
 
+# Direct email/password login
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    try:
+        email = request.json.get("email")
+        password = request.json.get("password")
+
+        if not email or not password:
+            return jsonify({"error": "Email and password are required"}), 400
+
+        try:
+            # Try to sign in the user
+            user = auth.get_user_by_email(email)
+            # Create custom token for the user
+            custom_token = auth.create_custom_token(user.uid)
+            return jsonify({
+                "success": True,
+                "token": custom_token.decode(),
+                "uid": user.uid
+            }), 200
+        except auth.UserNotFoundError:
+            return jsonify({"error": "User not found"}), 404
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # Generate and send OTP
 @app.route("/api/auth/request-otp", methods=["POST"])
 def request_otp():
@@ -77,7 +105,7 @@ def verify_otp():
     try:
         email = request.json.get("email")
         otp = request.json.get("otp")
-        password = request.json.get("password")  # Add password to request
+        password = request.json.get("password")
 
         if not email or not otp:
             return jsonify({"error": "Email and OTP are required"}), 400
