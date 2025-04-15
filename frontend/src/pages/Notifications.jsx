@@ -32,12 +32,15 @@ import {
   markAllNotificationsAsRead,
   subscribeToNotifications
 } from '../services/notificationService';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 export default function Notifications() {
   const theme = useTheme();
   const { currentUser } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userDisplayNames, setUserDisplayNames] = useState({});
   
   useEffect(() => {
     if (!currentUser) return;
@@ -48,6 +51,9 @@ export default function Notifications() {
       try {
         const userNotifications = await getNotifications(currentUser.uid);
         setNotifications(userNotifications);
+        
+        // Fetch user display names for each notification
+        fetchUserDisplayNames(userNotifications);
       } catch (error) {
         console.error('Error fetching notifications:', error);
       } finally {
@@ -60,6 +66,9 @@ export default function Notifications() {
     // Set up real-time listener for new notifications
     const unsubscribe = subscribeToNotifications(currentUser.uid, (updatedNotifications) => {
       setNotifications(updatedNotifications);
+      
+      // Fetch user display names for any new notifications
+      fetchUserDisplayNames(updatedNotifications);
       setLoading(false);
     });
     
@@ -68,6 +77,103 @@ export default function Notifications() {
       if (unsubscribe) unsubscribe();
     };
   }, [currentUser]);
+  
+  // Function to fetch user display names
+  const fetchUserDisplayNames = async (notificationList) => {
+    const userIds = notificationList
+      .filter(notification => notification.senderUserId)
+      .map(notification => notification.senderUserId);
+      
+    // Remove duplicates
+    const uniqueUserIds = [...new Set(userIds)];
+    
+    // Skip if we already have all the names or no IDs to fetch
+    if (uniqueUserIds.length === 0) return;
+    
+    // Only fetch names we don't already have
+    const idsToFetch = uniqueUserIds.filter(id => !userDisplayNames[id]);
+    if (idsToFetch.length === 0) return;
+    
+    // Fetch each user's display name
+    const newDisplayNames = { ...userDisplayNames };
+    
+    for (const userId of idsToFetch) {
+      try {
+        const userRef = doc(db, 'users', userId);
+        const userSnap = await getDoc(userRef);
+        
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          newDisplayNames[userId] = userData.displayName || userData.name || 'User';
+        } else {
+          newDisplayNames[userId] = 'User';
+        }
+      } catch (error) {
+        console.error(`Error fetching user ${userId}:`, error);
+        newDisplayNames[userId] = 'User';
+      }
+    }
+    
+    setUserDisplayNames(newDisplayNames);
+  };
+
+  // Function to format notification content based on type
+  const formatNotificationContent = (notification) => {
+    if (!notification) return '';
+    
+    // For join notifications that already contain the username in content
+    if (notification.type === 'group_join' && notification.content) {
+      // If content contains "User" or an ID followed by "joined group", reformat it
+      const joinRegex = /^(.+?)\s+joined\s+group\s+(.+)$/i;
+      const match = notification.content.match(joinRegex);
+      
+      if (match) {
+        return `joined group ${match[2]}`;
+      }
+    }
+    
+    // For leave notifications that already contain the username in content
+    if (notification.type === 'group_leave' && notification.content) {
+      const leaveRegex = /^(.+?)\s+left\s+the\s+group$/i;
+      const match = notification.content.match(leaveRegex);
+      
+      if (match) {
+        return 'left the group';
+      }
+    }
+    
+    // For meeting notifications
+    if (notification.type === 'meeting' && notification.content) {
+      const meetingRegex = /^(.+?)\s+scheduled\s+a\s+new\s+meeting:\s+(.+)$/i;
+      const match = notification.content.match(meetingRegex);
+      
+      if (match) {
+        return `scheduled a new meeting: ${match[2]}`;
+      }
+    }
+    
+    // For message notifications
+    if (notification.type === 'message' && notification.content) {
+      const messageRegex = /^(.+?)\s+sent\s+a\s+new\s+message\s+in\s+(.+)$/i;
+      const match = notification.content.match(messageRegex);
+      
+      if (match) {
+        return `sent a new message in ${match[2]}`;
+      }
+    }
+    
+    // For document notifications
+    if (notification.type === 'document' && notification.content) {
+      const docRegex = /^(.+?)\s+uploaded\s+a\s+new\s+document:\s+(.+)$/i;
+      const match = notification.content.match(docRegex);
+      
+      if (match) {
+        return `uploaded a new document: ${match[2]}`;
+      }
+    }
+    
+    return notification.content;
+  };
 
   const handleMarkAllRead = async () => {
     if (!currentUser) return;
@@ -189,7 +295,17 @@ export default function Notifications() {
                   {getNotificationIcon(notification.type)}
                 </ListItemIcon>
                 <ListItemText
-                  primary={notification.content}
+                  primary={
+                    <Typography variant="body1" sx={{ fontWeight: notification.read ? 400 : 600 }}>
+                      {notification.senderUserId && userDisplayNames[notification.senderUserId] ? (
+                        <Box component="span" sx={{ fontWeight: 600 }}>
+                          {userDisplayNames[notification.senderUserId]}
+                        </Box>
+                      ) : null}
+                      {notification.senderUserId && userDisplayNames[notification.senderUserId] ? ' • ' : ''}
+                      {formatNotificationContent(notification)}
+                    </Typography>
+                  }
                   secondary={
                     <>
                       {formatTimestamp(notification.timestamp)}

@@ -13,18 +13,28 @@ import {
   useTheme,
   CircularProgress,
   Snackbar,
-  Alert
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Menu,
+  MenuItem
 } from '@mui/material';
 import {
   Edit as EditIcon,
   Save as SaveIcon,
   Cancel as CancelIcon,
   PhotoCamera as PhotoCameraIcon,
-  Group as GroupIcon
+  Group as GroupIcon,
+  MoreVert as MoreVertIcon,
+  ExitToApp as ExitIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserProfile, updateProfile } from '../services/profileService';
-import { getGroups } from '../services/groupService';
+import { getGroups, leaveGroup, deleteGroup } from '../services/groupService';
 import { uploadFileToCloudinary } from '../services/fileService';
 import { useNavigate } from 'react-router-dom';
 
@@ -48,6 +58,17 @@ export default function Profile() {
     message: '',
     severity: 'success'
   });
+  
+  // New state variables for group actions
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    type: '', // 'leave' or 'delete'
+    groupId: null,
+    groupName: ''
+  });
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
     if (currentUser?.uid) {
@@ -98,6 +119,93 @@ export default function Profile() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Functions for group actions
+  const handleMenuOpen = (event, group) => {
+    event.stopPropagation(); // Prevent triggering the group click
+    setAnchorEl(event.currentTarget);
+    setSelectedGroup(group);
+  };
+
+  const handleMenuClose = (event) => {
+    if (event) {
+      event.stopPropagation(); // Prevent triggering the group click
+    }
+    setAnchorEl(null);
+    setSelectedGroup(null);
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!selectedGroup) return;
+    
+    setConfirmDialog({
+      open: true,
+      type: 'leave',
+      groupId: selectedGroup.id,
+      groupName: selectedGroup.name
+    });
+    handleMenuClose();
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!selectedGroup) return;
+    
+    setConfirmDialog({
+      open: true,
+      type: 'delete',
+      groupId: selectedGroup.id,
+      groupName: selectedGroup.name
+    });
+    handleMenuClose();
+  };
+
+  const confirmAction = async () => {
+    setActionLoading(true);
+    try {
+      if (confirmDialog.type === 'leave') {
+        await leaveGroup(confirmDialog.groupId, currentUser.uid);
+        setSnackbar({
+          open: true,
+          message: `You have left ${confirmDialog.groupName}`,
+          severity: 'success'
+        });
+      } else if (confirmDialog.type === 'delete') {
+        await deleteGroup(confirmDialog.groupId);
+        setSnackbar({
+          open: true,
+          message: `Group ${confirmDialog.groupName} has been deleted`,
+          severity: 'success'
+        });
+      }
+      
+      // Refresh the groups list
+      await fetchProfile();
+    } catch (error) {
+      console.error(`Error ${confirmDialog.type === 'leave' ? 'leaving' : 'deleting'} group:`, error);
+      setSnackbar({
+        open: true,
+        message: `Error ${confirmDialog.type === 'leave' ? 'leaving' : 'deleting'} group: ${error.message}`,
+        severity: 'error'
+      });
+    } finally {
+      setActionLoading(false);
+      setConfirmDialog({
+        open: false,
+        type: '',
+        groupId: null,
+        groupName: ''
+      });
+    }
+  };
+
+  const cancelAction = () => {
+    setConfirmDialog({
+      open: false,
+      type: '',
+      groupId: null,
+      groupName: ''
+    });
   };
 
   const handleEdit = () => {
@@ -349,7 +457,6 @@ export default function Profile() {
                 joinedGroups.map((group) => (
                   <Grid item xs={12} sm={6} md={4} key={group.id}>
                     <Paper
-                      onClick={() => handleGroupClick(group.id)}
                       elevation={3}
                       sx={{
                         p: { xs: 1.5, sm: 2 },
@@ -359,6 +466,7 @@ export default function Profile() {
                         cursor: 'pointer',
                         borderRadius: 2,
                         boxShadow: 3,
+                        position: 'relative',
                         '&:hover': { 
                           bgcolor: 'action.hover',
                           transform: 'translateY(-2px)',
@@ -367,41 +475,56 @@ export default function Profile() {
                         }
                       }}
                     >
-                      <Avatar 
-                        src={group.image}
+                      <Box 
+                        sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, flexGrow: 1 }}
+                        onClick={() => handleGroupClick(group.id)}
+                      >
+                        <Avatar 
+                          src={group.image}
+                          sx={{ 
+                            width: { xs: 40, sm: 48 }, 
+                            height: { xs: 40, sm: 48 } 
+                          }}
+                        >
+                          <GroupIcon sx={{ fontSize: { xs: 24, sm: 28 } }} />
+                        </Avatar>
+                        <Box sx={{ overflow: 'hidden' }}>
+                          <Typography 
+                            variant="subtitle1" 
+                            sx={{ 
+                              fontSize: { xs: '0.875rem', sm: '1rem' },
+                              fontWeight: 'medium',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}
+                          >
+                            {group.name}
+                          </Typography>
+                          <Typography 
+                            variant="body2" 
+                            color="text.secondary" 
+                            sx={{ 
+                              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}
+                          >
+                            {group.members?.length || 0} members
+                          </Typography>
+                        </Box>
+                      </Box>
+                      <IconButton 
+                        onClick={(e) => handleMenuOpen(e, group)} 
+                        size="small"
                         sx={{ 
-                          width: { xs: 40, sm: 48 }, 
-                          height: { xs: 40, sm: 48 } 
+                          color: 'text.secondary',
+                          '&:hover': { color: 'primary.main' } 
                         }}
                       >
-                        <GroupIcon sx={{ fontSize: { xs: 24, sm: 28 } }} />
-                      </Avatar>
-                      <Box sx={{ overflow: 'hidden' }}>
-                        <Typography 
-                          variant="subtitle1" 
-                          sx={{ 
-                            fontSize: { xs: '0.875rem', sm: '1rem' },
-                            fontWeight: 'medium',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                          }}
-                        >
-                          {group.name}
-                        </Typography>
-                        <Typography 
-                          variant="body2" 
-                          color="text.secondary" 
-                          sx={{ 
-                            fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                          }}
-                        >
-                          {group.members?.length || 0} members
-                        </Typography>
-                      </Box>
+                        <MoreVertIcon />
+                      </IconButton>
                     </Paper>
                   </Grid>
                 ))
@@ -431,6 +554,81 @@ export default function Profile() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* Group Action Menu */}
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleMenuClose}
+        sx={{ mt: 1 }}
+      >
+        <MenuItem 
+          onClick={handleLeaveGroup}
+          sx={{ 
+            color: 'text.secondary',
+            gap: 1, 
+            py: 1
+          }}
+        >
+          <ExitIcon fontSize="small" />
+          Leave Group
+        </MenuItem>
+        {selectedGroup && selectedGroup.creatorId === currentUser.uid && (
+          <MenuItem 
+            onClick={handleDeleteGroup}
+            sx={{ 
+              color: 'error.main',
+              gap: 1,
+              py: 1
+            }}
+          >
+            <DeleteIcon fontSize="small" />
+            Delete Group
+          </MenuItem>
+        )}
+      </Menu>
+
+      {/* Confirmation Dialog */}
+      <Dialog
+        open={confirmDialog.open}
+        onClose={cancelAction}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">
+          {confirmDialog.type === 'leave' 
+            ? `Leave "${confirmDialog.groupName}"?`
+            : `Delete "${confirmDialog.groupName}"?`}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="alert-dialog-description">
+            {confirmDialog.type === 'leave'
+              ? `Are you sure you want to leave this group? You can always rejoin later if you change your mind.`
+              : `Are you sure you want to delete this group? This action cannot be undone and all group content will be permanently removed.`}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={cancelAction}
+            disabled={actionLoading}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={confirmAction}
+            color={confirmDialog.type === 'delete' ? 'error' : 'primary'}
+            variant="contained"
+            autoFocus
+            disabled={actionLoading}
+          >
+            {actionLoading 
+              ? <CircularProgress size={24} /> 
+              : confirmDialog.type === 'leave' 
+                ? 'Leave' 
+                : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

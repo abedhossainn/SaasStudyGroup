@@ -66,8 +66,8 @@ export const createGroup = async (groupData) => {
     }
   }
   
-  // Check if createdBy field exists and is not undefined
-  if (!groupData.createdBy) {
+  // Check if creatorId field exists and is not undefined
+  if (!groupData.creatorId) {
     throw new Error('User ID is required to create a group. Please ensure you are logged in.');
   }
 

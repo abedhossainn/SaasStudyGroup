@@ -55,7 +55,7 @@ export default function Dashboard() {
     description: '',
     topics: '',
     image: '/test_wallpaper.png',
-    creatorId: currentUser?.uid
+    creatorId: currentUser?.uid  // Changed from createdBy to creatorId to match security rules
   });
 
   const categories = ['All', 'Programming', 'Mathematics', 'Science', 'Languages', 'Business', 'Arts', 'Other'];
@@ -142,7 +142,7 @@ export default function Dashboard() {
         description: newGroup.description,
         topics: newGroup.topics.split(',').map(topic => topic.trim()).filter(Boolean),
         image: selectedImage,
-        createdBy: currentUser?.uid,
+        creatorId: currentUser?.uid, // Changed from createdBy to creatorId
         members: [currentUser?.uid]
       });
 

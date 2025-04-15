@@ -16,19 +16,18 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
     }
 
-    // Helper function to check if user is group admin
-    function isGroupAdmin(groupId) {
+    // Helper function to check if user is the group creator
+    function isGroupCreator(groupId) {
       return isAuthenticated() && 
-        get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role == 'admin';
+        request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.createdBy;
     }
 
-    // Helper function to validate message data
-    function isValidMessage() {
-      return request.resource.data.keys().hasAll(['text', 'senderId', 'senderName', 'timestamp']) &&
-        request.resource.data.text is string &&
-        request.resource.data.senderId is string &&
-        request.resource.data.senderName is string &&
-        request.resource.data.timestamp is timestamp;
+    // 🔹 Events Collection
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && 
+        resource.data.createdBy == request.auth.uid;
     }
 
     // 🔹 Messages Collection
@@ -39,15 +38,25 @@ service cloud.firestore {
       // Allow creating new messages (sender only, required fields only)
       allow create: if isAuthenticated() &&
         request.resource.data.senderId == request.auth.uid &&
-        isValidMessage();
+        request.resource.data.text is string &&
+        request.resource.data.senderName is string &&
+        request.resource.data.timestamp is timestamp;
 
       // Allow updating messages only to mark them as seen
       allow update: if isAuthenticated() &&
         // Only the recipient can mark as seen
         resource.data.to == request.auth.uid &&
-        // Only the `seen` field is changing
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seen']) &&
-        request.resource.data.seen == true;
+        // Only the `seen` field is changing (optional safety check)
+        request.resource.data.seen == true &&
+        request.resource.data.text == resource.data.text &&
+        request.resource.data.senderId == resource.data.senderId &&
+        request.resource.data.senderName == resource.data.senderName &&
+        request.resource.data.timestamp == resource.data.timestamp &&
+        request.resource.data.to == resource.data.to;
+        
+      // Allow users to delete their own messages
+      allow delete: if isAuthenticated() && 
+        resource.data.senderId == request.auth.uid;
     }
 
     // 🔹 Users Collection
@@ -60,6 +69,9 @@ service cloud.firestore {
       
       // Allow update if user is the owner
       allow update: if isOwner(userId);
+      
+      // Allow users to delete their own accounts
+      allow delete: if isOwner(userId);
     }
     
     // 🔹 Groups Collection
@@ -67,31 +79,65 @@ service cloud.firestore {
       // Allow read if authenticated
       allow read: if isAuthenticated();
       
-      // Allow create if authenticated and has required fields
+      // Allow create if authenticated
       allow create: if isAuthenticated() &&
-        request.resource.data.creatorId == request.auth.uid &&
-        request.resource.data.keys().hasAll(['name', 'description', 'creatorId', 'createdAt']);
+        request.resource.data.creatorId == request.auth.uid;
       
-      // Allow update/delete if user is the creator or admin
-      allow update, delete: if isAuthenticated() && 
-        (resource.data.creatorId == request.auth.uid || isGroupAdmin(groupId));
+      // Allow update if user is the creator OR if the user is only updating the members array to join the group
+      allow update: if isAuthenticated() && (
+        // Group creator can make any updates
+        resource.data.creatorId == request.auth.uid ||
+        
+        // OR other users can only update 'members' field to add themselves to the group
+        (
+          // Only allow updating the members field and lastActive/updatedAt timestamps
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['members', 'updatedAt', 'lastActive']) &&
+          
+          // Ensure members array only adds the current user
+          request.resource.data.members.hasOnly(resource.data.members.concat([request.auth.uid]))
+        )
+      );
+      
+      // Allow delete if user is the creator
+      allow delete: if isAuthenticated() && 
+        resource.data.creatorId == request.auth.uid;
       
       // Allow members to update their own status
       match /members/{memberId} {
         allow read: if isAuthenticated();
         allow write: if isAuthenticated() && memberId == request.auth.uid;
-        allow update: if isAuthenticated() && 
-          (memberId == request.auth.uid || isGroupAdmin(groupId));
+      }
+      
+      // Group Messages Subcollection
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if false; // Messages cannot be edited or deleted
       }
 
-      // Allow access to group calendar events for group members
-      match /events/{eventId} {
-        allow read: if isAuthenticated() && isGroupMember(groupId);
-        allow create: if isAuthenticated() && isGroupMember(groupId);
-        allow update, delete: if isAuthenticated() && (
-          resource.data.creatorId == request.auth.uid || isGroupAdmin(groupId)
-        );
+      // Group Meetings Subcollection
+      match /meetings/{meetingId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated() && 
+          resource.data.createdBy == request.auth.uid;
       }
+
+      // Group Documents Subcollection
+      match /documents/{documentId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated();
+      }
+    }
+
+    // 🔹 Top-level Meetings Collection
+    match /meetings/{meetingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && 
+        resource.data.createdBy == request.auth.uid;
     }
 
     // 🔹 Notifications Collection
@@ -100,32 +146,17 @@ service cloud.firestore {
       allow read: if isAuthenticated() && 
         resource.data.userId == request.auth.uid;
       
-      // Allow create if authenticated and notification is for the user
-      allow create: if isAuthenticated() &&
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.keys().hasAll(['type', 'message', 'timestamp']);
+      // Allow any authenticated user to create notifications for any user
+      // This allows scheduling events to create notifications for group members
+      allow create: if isAuthenticated();
       
       // Allow update if authenticated and notification belongs to user
       allow update: if isAuthenticated() &&
-        resource.data.userId == request.auth.uid &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
-    }
-
-    // 🔹 Calendar Events Collection
-    match /events/{eventId} {
-      // Allow read if authenticated
-      allow read: if isAuthenticated();
-      
-      // Allow create if authenticated user is the creator
-      allow create: if isAuthenticated() &&
-        request.resource.data.creatorId == request.auth.uid &&
-        request.resource.data.keys().hasAll(['title', 'start', 'end', 'creatorId']);
-      
-      // Allow update/delete if user is the creator or group admin (if it's a group event)
-      allow update, delete: if isAuthenticated() && (
-        resource.data.creatorId == request.auth.uid || 
-        (resource.data.groupId != null && isGroupAdmin(resource.data.groupId))
-      );
+        resource.data.userId == request.auth.uid;
+        
+      // Allow users to delete their own notifications
+      allow delete: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid;
     }
   }
 }
