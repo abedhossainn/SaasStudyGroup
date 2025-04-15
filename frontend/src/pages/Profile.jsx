@@ -76,7 +76,7 @@ export default function Profile() {
     setEditForm({
       name: profile?.name || '',
       bio: profile?.bio || '',
-      avatar: null
+      avatar: profile?.avatar || null
     });
   };
 
@@ -101,6 +101,7 @@ export default function Profile() {
         ...editForm,
         avatar: editForm.avatar || profile?.avatar || null
       });
+      updatedProfile.email = profile?.email || "";
       setProfile(updatedProfile);
       setEditing(false);
       setPreviewImage(null);

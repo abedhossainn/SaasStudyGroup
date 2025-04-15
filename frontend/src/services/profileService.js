@@ -68,7 +68,7 @@ export const updateProfile = async (userId, profileData) => {
       */
       const userRef = doc(db, 'users', userId);
 
-      let avatarUrl = null;
+      let avatarUrl = profileData.avatar || null;
       if (profileData.avatar && profileData.avatar instanceof File) {
         avatarUrl = await uploadFileToCloudinary(profileData.avatar);
       }
