@@ -20,7 +20,6 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import { Send as SendIcon } from '@mui/icons-material';
-import CloseIcon from '@mui/icons-material/Close';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 import { db, auth } from '../firebase';
@@ -48,6 +47,7 @@ export default function Messages() {
   const [lastMessages, setLastMessages] = useState({});
   const chatEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const inputRef = useRef(null); // Add a ref for the text input field
   const currentUserId = auth.currentUser?.uid;
   const { enqueueSnackbar } = useSnackbar();
   const hasAutoSelectedRef = useRef(false);
@@ -220,6 +220,14 @@ export default function Messages() {
     return () => unsubscribe();
   }, [selectedUser, currentUserId]);
 
+  // Maintain focus on the input field after each render if inputRef exists
+  useEffect(() => {
+    // Restore focus to the input field after Firestore updates cause re-renders
+    if (inputRef.current && selectedUser) {
+      inputRef.current.focus();
+    }
+  });
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedUser || !currentUserId) return;
@@ -258,20 +266,9 @@ export default function Messages() {
   };
 
   const handleTyping = () => {
-    if (!auth.currentUser || !selectedUser) return;
-
-    const userRef = doc(db, 'users', auth.currentUser.uid);
-
-    updateDoc(userRef, {
-      typingTo: selectedUser.id
-    });
-
-    clearTimeout(window.typingTimeout);
-    window.typingTimeout = setTimeout(() => {
-      updateDoc(userRef, {
-        typingTo: null
-      });
-    }, 2000);
+    // Do nothing - removing Firestore updates on typing to prevent losing focus
+    // The typing indicator is nice but not worth breaking the user experience
+    return;
   };
 
   // Format the last message preview text
@@ -387,6 +384,7 @@ export default function Messages() {
             setNewMessage(e.target.value);
             handleTyping();
           }}
+          inputRef={inputRef} // Attach the ref to the input field
         />
         <IconButton color="primary" type="submit">
           <SendIcon />
