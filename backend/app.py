@@ -6,7 +6,6 @@ import logging
 from datetime import datetime, timedelta
 from firebase_admin import credentials, initialize_app, auth
 from flask import Flask, request, jsonify, make_response
-from flask_cors import CORS
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from dotenv import load_dotenv
@@ -20,14 +19,18 @@ load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
-# Enable CORS globally (default allows all origins, methods, headers)
-CORS(app)
 
+# Manually handle all OPTIONS preflight requests
 @app.before_request
-def log_request_info():
-    logger.info(f"Handling {request.method} request for {request.path}")
+def handle_preflight():
     if request.method == 'OPTIONS':
-        logger.info("Handling preflight OPTIONS request")
+        logger.info("Handling OPTIONS preflight request")
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = 'https://saasstudygroup-frontend.onrender.com'
+        response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response, 200  # Explicitly return 200 status code
 
 # Initialize Firebase
 firebase_credentials = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
@@ -76,7 +79,7 @@ def login():
         return jsonify({"error": str(e)}), 500
 
 # Generate and send OTP
-@app.route("/api/auth/request-otp", methods=["POST", "OPTIONS"])
+@app.route("/api/auth/request-otp", methods=["POST"])
 def request_otp():
     try:
         email = request.json.get("email")
@@ -103,17 +106,23 @@ def request_otp():
         
         sg.send(message)
 
-        return jsonify({
+        response = jsonify({
             "success": True,
             "message": "OTP sent successfully"
-        }), 200
+        })
+        response.headers['Access-Control-Allow-Origin'] = 'https://saasstudygroup-frontend.onrender.com'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response, 200
 
     except Exception as e:
         logger.error(f"Error during OTP request: {e}")
-        return jsonify({"error": str(e)}), 500
+        response = jsonify({"error": str(e)})
+        response.headers['Access-Control-Allow-Origin'] = 'https://saasstudygroup-frontend.onrender.com'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response, 500
 
 # Verify OTP
-@app.route("/api/auth/verify-otp", methods=["POST", "OPTIONS"])
+@app.route("/api/auth/verify-otp", methods=["POST"])
 def verify_otp():
     try:
         email = request.json.get("email")
@@ -124,7 +133,6 @@ def verify_otp():
             return jsonify({"error": "Email and OTP are required"}), 400
 
         stored_otp = otp_storage.get(email)
-        
         if not stored_otp:
             return jsonify({"error": "OTP not found or expired"}), 400
 
@@ -143,12 +151,16 @@ def verify_otp():
             user = auth.get_user_by_email(email)
             # If user exists, create custom token
             custom_token = auth.create_custom_token(user.uid)
-            return jsonify({
+            response = jsonify({
                 "success": True,
                 "token": custom_token.decode(),
                 "userExists": True,
                 "uid": user.uid
-            }), 200
+            })
+            response.headers['Access-Control-Allow-Origin'] = 'https://saasstudygroup-frontend.onrender.com'
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            return response, 200
+
         except auth.UserNotFoundError:
             # If user doesn't exist, create a new user with password
             if not password:
@@ -160,19 +172,29 @@ def verify_otp():
             )
             # Create custom token for the new user
             custom_token = auth.create_custom_token(user.uid)
-            return jsonify({
+            response = jsonify({
                 "success": True,
                 "token": custom_token.decode(),
                 "userExists": False,
                 "uid": user.uid
-            }), 200
+            })
+            response.headers['Access-Control-Allow-Origin'] = 'https://saasstudygroup-frontend.onrender.com'
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            return response, 200
+
         except Exception as e:
             logger.error(f"Error during user creation or token generation: {e}")
-            return jsonify({"error": str(e)}), 500
+            response = jsonify({"error": str(e)})
+            response.headers['Access-Control-Allow-Origin'] = 'https://saasstudygroup-frontend.onrender.com'
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            return response, 500
 
     except Exception as e:
         logger.error(f"Unexpected error during OTP verification: {e}")
-        return jsonify({"error": str(e)}), 500
+        response = jsonify({"error": str(e)})
+        response.headers['Access-Control-Allow-Origin'] = 'https://saasstudygroup-frontend.onrender.com'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response, 500
 
 # Verify token route
 @app.route("/verify-token", methods=["POST"])
