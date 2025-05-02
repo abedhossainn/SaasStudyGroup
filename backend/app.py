@@ -5,7 +5,7 @@ import time
 import logging
 from datetime import datetime, timedelta
 from firebase_admin import credentials, initialize_app, auth
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
@@ -108,6 +108,19 @@ def request_otp():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/auth/request-otp', methods=['OPTIONS'])
+def handle_preflight_request_otp():
+    try:
+        logger.info("Explicitly handling OPTIONS request for /api/auth/request-otp")
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response, 200
+    except Exception as e:
+        logger.error(f"Error handling OPTIONS request: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 # Verify OTP
 @app.route("/api/auth/verify-otp", methods=["POST", "OPTIONS"])
