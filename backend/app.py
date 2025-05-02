@@ -2,6 +2,7 @@ import os
 import json
 import pyotp
 import time
+import logging
 from datetime import datetime, timedelta
 from firebase_admin import credentials, initialize_app, auth
 from flask import Flask, request, jsonify
@@ -10,14 +11,23 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from dotenv import load_dotenv
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Load environment variables
 load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
+# Enable CORS globally (default allows all origins, methods, headers)
+CORS(app)
 
-# Enable CORS, allowing all origins for /api/* routes for debugging
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+@app.before_request
+def log_request_info():
+    logger.info(f"Handling {request.method} request for {request.path}")
+    if request.method == 'OPTIONS':
+        logger.info("Handling preflight OPTIONS request")
 
 # Initialize Firebase
 firebase_credentials = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
@@ -64,7 +74,7 @@ def login():
         return jsonify({"error": str(e)}), 500
 
 # Generate and send OTP
-@app.route("/api/auth/request-otp", methods=["POST"])
+@app.route("/api/auth/request-otp", methods=["POST", "OPTIONS"])
 def request_otp():
     try:
         email = request.json.get("email")
@@ -100,7 +110,7 @@ def request_otp():
         return jsonify({"error": str(e)}), 500
 
 # Verify OTP
-@app.route("/api/auth/verify-otp", methods=["POST"])
+@app.route("/api/auth/verify-otp", methods=["POST", "OPTIONS"])
 def verify_otp():
     try:
         email = request.json.get("email")
