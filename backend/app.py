@@ -68,9 +68,11 @@ def login():
         except auth.UserNotFoundError:
             return jsonify({"error": "User not found"}), 404
         except Exception as e:
+            logger.error(f"Error during login: {e}")
             return jsonify({"error": str(e)}), 500
 
     except Exception as e:
+        logger.error(f"Unexpected error during login: {e}")
         return jsonify({"error": str(e)}), 500
 
 # Generate and send OTP
@@ -107,20 +109,8 @@ def request_otp():
         }), 200
 
     except Exception as e:
+        logger.error(f"Error during OTP request: {e}")
         return jsonify({"error": str(e)}), 500
-
-@app.route('/api/auth/request-otp', methods=['OPTIONS'])
-def handle_preflight_request_otp():
-    try:
-        logger.info("Explicitly handling OPTIONS request for /api/auth/request-otp")
-        response = make_response()
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-        return response, 200
-    except Exception as e:
-        logger.error(f"Error handling OPTIONS request: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
 
 # Verify OTP
 @app.route("/api/auth/verify-otp", methods=["POST", "OPTIONS"])
@@ -177,9 +167,11 @@ def verify_otp():
                 "uid": user.uid
             }), 200
         except Exception as e:
+            logger.error(f"Error during user creation or token generation: {e}")
             return jsonify({"error": str(e)}), 500
 
     except Exception as e:
+        logger.error(f"Unexpected error during OTP verification: {e}")
         return jsonify({"error": str(e)}), 500
 
 # Verify token route
@@ -189,7 +181,8 @@ def verify_token():
     try:
         decoded_token = auth.verify_id_token(token)
         return jsonify({"uid": decoded_token["uid"]}), 200
-    except:
+    except Exception as e:
+        logger.error(f"Error during token verification: {e}")
         return jsonify({"error": "Invalid token"}), 401
 
 # Run the app
