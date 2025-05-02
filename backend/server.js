@@ -7,7 +7,8 @@ const Database = require('better-sqlite3');
 const { v2: cloudinary } = require('cloudinary');
 
 const app = express();
-const PORT = 5000;
+// Use environment variable for port (needed for Render) or default to 5000
+const PORT = process.env.PORT || 5000;
 
 // Configure Cloudinary
 cloudinary.config({
@@ -61,6 +62,20 @@ db.exec(`
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Add a root route handler
+app.get('/', (req, res) => {
+  res.json({
+    message: 'SaaS Study Group API',
+    version: '1.0.0',
+    endpoints: {
+      api: '/api',
+      status: '/api/status',
+      files: '/api/files/:groupId',
+      upload: '/api/cloudinary/upload'
+    }
+  });
+});
 
 // Cloudinary upload endpoint
 app.post('/api/cloudinary/upload', upload.single('file'), async (req, res) => {
