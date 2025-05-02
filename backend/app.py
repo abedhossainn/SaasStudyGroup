@@ -16,8 +16,10 @@ load_dotenv()
 # Initialize Flask app
 app = Flask(__name__)
 
-# Enable CORS for all routes
-CORS(app)
+# Enable CORS, explicitly allowing the frontend origin
+# Make sure to replace with your actual frontend URL if different
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://saasstudygroup-frontend.onrender.com')
+CORS(app, resources={r"/api/*": {"origins": FRONTEND_URL}})
 
 # Initialize Firebase
 firebase_credentials = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
