@@ -9,6 +9,7 @@ from flask import Flask, request, jsonify, make_response
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from dotenv import load_dotenv
+from flask_cors import CORS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,17 +21,14 @@ load_dotenv()
 # Initialize Flask app
 app = Flask(__name__)
 
-# Manually handle all OPTIONS preflight requests
-@app.before_request
-def handle_preflight():
-    if request.method == 'OPTIONS':
-        logger.info("Handling OPTIONS preflight request")
-        response = make_response()
-        response.headers['Access-Control-Allow-Origin'] = 'https://saasstudygroup-frontend.onrender.com'
-        response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        return response, 200  # Explicitly return 200 status code
+# Configure CORS
+CORS(app, 
+     resources={r"/api/*": {
+         "origins": ["https://saasstudygroup-frontend.onrender.com"],
+         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         "allow_headers": ["Content-Type", "Authorization"],
+         "supports_credentials": True
+     }})
 
 # Initialize Firebase
 firebase_credentials = json.loads(os.getenv("FIREBASE_CREDENTIALS"))

@@ -222,8 +222,10 @@ export function AuthProvider({ children }) {
       
       const response = await fetch(API_ENDPOINTS.REQUEST_OTP, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: JSON.stringify({ email }),
       });
@@ -278,8 +280,10 @@ export function AuthProvider({ children }) {
       console.log('Sending OTP verification request');
       const response = await fetch(API_ENDPOINTS.VERIFY_OTP, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: JSON.stringify({ 
           email, 
