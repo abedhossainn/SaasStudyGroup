@@ -8,20 +8,17 @@ import Dashboard from '../screens/DashboardScreen';
 import VerifyOTP from '../screens/VerifyOTP';
 import RequestOTP from '../screens/RequestOTP';
 
-//import Test from '../screens/Test';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 
- const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator();
 
 function AuthStack() {
   return (
-    <AuthProvider>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="RequestOTP" component={RequestOTP} />
-        <Stack.Screen name="VerifyOtp" component={VerifyOTP} />
+        <Stack.Screen name="VerifyOTP" component={VerifyOTP} />
       </Stack.Navigator>
-    </AuthProvider>
   );
 }
 
@@ -44,8 +41,9 @@ function RootNavigator() {
 
 const App = () => {
   return (
+    
     <AuthProvider>
-        <RootNavigator />
+      <RootNavigator />
     </AuthProvider>
   );
 }

@@ -1,35 +1,55 @@
 import React from 'react';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import DashboardScreen from '../screens/DashboardScreen';
-import GroupDetails from '../screens/GroupDetailsScreen'
+import GroupDetails from '../screens/GroupDetailsScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 import CustomDrawerContent from './CustomDrawerContent';
-import { Button } from 'react-native-paper';
+import { Button, IconButton, Avatar} from 'react-native-paper';
+import { TouchableOpacity } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
 
 const Drawer = createDrawerNavigator();
 
 export default function DrawerNavigator() {
+  const { currentUser } = useAuth();
+  
   return (
     <Drawer.Navigator
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={({ navigation }) => ({
-        headerShown: true, 
-        drawerPosition: 'left', 
+        headerShown: true,
+        headerTitle: '',
+        drawerPosition: 'left',
         drawerType: 'slide',
         headerLeft: () => (
           <Button
             icon="menu"
-            onPress={() => navigation.openDrawer()} 
+            onPress={() => navigation.openDrawer()}
             style={{ marginLeft: 10 }}
           >
             Menu
           </Button>
         ),
+        headerRight: () => (
+          <TouchableOpacity
+          onPress={() => navigation.navigate('ProfileScreen')}
+          style={{ marginRight: 10 }}
+        >
+          {currentUser?.Avatar ? (
+            <Image
+              source={{ uri: currentUser.Avatar }}
+              style={{ width: 32, height: 32, borderRadius: 16 }}
+            />
+          ) : (
+            <Avatar.Icon size={32} icon="account-circle" />
+          )}
+        </TouchableOpacity>
+        )
       })}
     >
       <Drawer.Screen name="Dashboard" component={DashboardScreen} />
       <Drawer.Screen name="GroupDetails" component={GroupDetails} />
-
-      {/* Other screens */}
+      <Drawer.Screen name="ProfileScreen" component={ProfileScreen} />
     </Drawer.Navigator>
   );
 }

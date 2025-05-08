@@ -1,4 +1,3 @@
-// navigation/CustomDrawerContent.js
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { DrawerContentScrollView } from '@react-navigation/drawer';
@@ -6,9 +5,9 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 
 const navItems = [
   { text: 'Dashboard', icon: 'dashboard', path: 'Dashboard' },
-  { text: 'Study Groups', icon: 'group', path: 'Groups' },
   { text: 'Messages', icon: 'message', path: 'Messages' },
   { text: 'Calendar', icon: 'date-range', path: 'Calendar' },
+  { text: 'Notifications', icon: 'notifications', path: 'Notifications' },
 ];
 
 export default function CustomDrawerContent({ navigation }) {
