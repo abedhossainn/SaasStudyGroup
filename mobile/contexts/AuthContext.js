@@ -17,7 +17,7 @@ import {
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../config/firebase';
-import { API_ENDPOINTS } from '@frontend/src/config/backend';
+import { API_ENDPOINTS } from '../config/backend';
 
 const AuthContext = createContext(null);
 
@@ -37,9 +37,14 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null);
 
   const signup = async (email, password, displayName) => {
-    await requestOTP(email);
-    await AsyncStorage.setItem('pendingSignup', JSON.stringify({ email, password, displayName }));
-    return { success: true, message: 'OTP sent successfully' };
+    try{
+      await requestOTP(email);
+      await AsyncStorage.setItem('pendingSignup', JSON.stringify({ email, password, displayName }));
+      return { success: true, message: 'OTP sent successfully' };
+    } catch (error) {
+      console.log(error.message);
+      throw new Error('Failed to create account: ' + error.message);
+    }
   };
 
   const login = async (email, password) => {
@@ -63,7 +68,6 @@ export function AuthProvider({ children }) {
       });
     }
 
-    // TODO: Use navigation.navigate('Dashboard')
     return userCredential.user;
   };
 
@@ -72,10 +76,16 @@ export function AuthProvider({ children }) {
     throw new Error('Google Sign-In not yet implemented for React Native.');
   };
 
-  const logout = async () => {
+  const logout = () => {
     const userRef = doc(db, 'users', auth.currentUser.uid);
-    await updateDoc(userRef, { status: 'offline', lastSeen: serverTimestamp() });
-    await signOut(auth);
+
+    updateDoc(userRef, {
+      status: 'offline',
+      lastSeen: serverTimestamp(),
+    })
+    .then(() => {
+      return signOut(auth);
+    })
     setCurrentUser(null);
   };
 
@@ -109,16 +119,38 @@ export function AuthProvider({ children }) {
   }, [currentUser]);
 
   const requestOTP = async (email) => {
-    const response = await fetch(API_ENDPOINTS.REQUEST_OTP, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch(API_ENDPOINTS.REQUEST_OTP, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
 
-    const data = await response.json();
-    if (!response.ok || !data.success) throw new Error(data.message || 'Failed to send OTP');
-    setOtpSent(true);
-    setEmail(email);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send OTP');
+      }
+
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to send OTP');
+      }
+
+      setOtpSent(true);
+      setEmail(email);
+      return { success: true, message: 'OTP sent successfully' };
+    } catch (error) {
+      setError(error.message);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const verifyOTP = async (email, otp) => {
