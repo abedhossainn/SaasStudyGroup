@@ -6,7 +6,7 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 import { db, storage } from '../config/firebase';
-import { mockApi } from '@frontend/src/services/mockApi';
+import { mockUsers } from '../services/mockApi';
 import { USE_MOCK_API } from '@frontend/src/config/appConfig';
 import { uploadFileToCloudinary } from './fileService'
 // Get user profile

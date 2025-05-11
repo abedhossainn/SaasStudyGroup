@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "SaaS Study Group",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/image.png",
+    "icon": "./assets/images/image-2.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -13,21 +13,22 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/image.png",
+        "foregroundImage": "./assets/images/image-2.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.saasstudygroup.mobile"
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/image.png"
+      "favicon": "./assets/images/image-2.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/image.png",
+          "image": "./assets/images/image-2.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
@@ -36,6 +37,14 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "8b0ce798-f8b2-4aaf-acc5-7e492f1b8c0b"
+      }
     }
   }
 }
