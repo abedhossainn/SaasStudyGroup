@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 
 const RequestOTP = () => {
@@ -17,25 +17,35 @@ const RequestOTP = () => {
   const [emailError, setEmailError] = useState('');
   const { requestOTP, loading, error } = useAuth();
   const navigation = useNavigation();
+  const route = useRoute();
+
+  useEffect(() => {
+    // If email is passed from signup, set it and automatically request OTP
+    if (route.params?.email) {
+      setEmail(route.params.email);
+      handleSubmit(route.params.email);
+    }
+  }, [route.params]);
 
   const validateEmail = (email) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return re.test(email);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (emailToUse = email) => {
     setEmailError('');
 
-    if (!validateEmail(email)) {
+    if (!validateEmail(emailToUse)) {
       setEmailError('Please enter a valid email address');
       return;
     }
 
     try {
-      await requestOTP(email);
-      navigation.navigate('VerifyOTP');
+      await requestOTP(emailToUse);
+      navigation.navigate('VerifyOTP', { email: emailToUse });
     } catch (err) {
       console.error('Error requesting OTP:', err);
+      Alert.alert('Error', err.message || 'Failed to request OTP');
     }
   };
 
@@ -54,12 +64,13 @@ const RequestOTP = () => {
           autoCorrect={false}
           value={email}
           onChangeText={setEmail}
+          editable={!route.params?.email} // Disable editing if email is passed from signup
         />
         {emailError ? <Text style={styles.helperText}>{emailError}</Text> : null}
 
         <TouchableOpacity
           style={[styles.button, styles.primary]}
-          onPress={handleSubmit}
+          onPress={() => handleSubmit()}
           disabled={loading}
         >
           {loading ? (

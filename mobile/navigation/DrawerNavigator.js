@@ -7,7 +7,10 @@ import CustomDrawerContent from './CustomDrawerContent';
 import { Button, IconButton, Avatar} from 'react-native-paper';
 import { TouchableOpacity } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
-
+import CalendarScreen from '../screens/CalendarScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import MessagesScreen from '../screens/MessagesScreen';
 const Drawer = createDrawerNavigator();
 
 export default function DrawerNavigator() {
@@ -50,6 +53,11 @@ export default function DrawerNavigator() {
       <Drawer.Screen name="Dashboard" component={DashboardScreen} />
       <Drawer.Screen name="GroupDetails" component={GroupDetails} />
       <Drawer.Screen name="ProfileScreen" component={ProfileScreen} />
+      <Drawer.Screen name="Calendar" component={CalendarScreen} />
+      <Drawer.Screen name="Notifications" component={NotificationsScreen} />
+      <Drawer.Screen name="Settings" component={SettingsScreen} />
+      <Drawer.Screen name="Messages" component={MessagesScreen} />
+
     </Drawer.Navigator>
   );
 }

@@ -5,7 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { createGroup, joinGroup } from '@frontend/src/services/groupService';
+import { createGroup, joinGroup } from '../services/groupService';
 import * as ImagePicker from 'expo-image-picker';
 
 const categories = ['All', 'Programming', 'Mathematics', 'Science', 'Languages', 'Business', 'Arts', 'Other'];
@@ -90,20 +90,29 @@ export default function DashboardScreen() {
 
   const handleCreateGroup = async () => {
     if (!newGroup.name || !newGroup.description) {
-      setError('Fill in all required fields');
+      setError('Please fill in all required fields');
       setShowError(true);
       return;
     }
+
     try {
       setLoading(true);
       await createGroup({
-        ...newGroup,
-        topics: newGroup.topics.split(',').map(t => t.trim()),
+        name: newGroup.name,
+        description: newGroup.description,
+        topics: newGroup.topics.split(',').map(topic => topic.trim()).filter(Boolean),
+        image: newGroup.image,
         creatorId: currentUser?.uid,
-        members: [currentUser?.uid],
+        members: [currentUser?.uid]
       });
+
       setVisible(false);
-      setNewGroup({ name: '', description: '', topics: '', image: null });
+      setNewGroup({
+        name: '',
+        description: '',
+        topics: '',
+        image: null,
+      });
     } catch (err) {
       setError(err.message || 'Failed to create group');
       setShowError(true);
@@ -192,14 +201,38 @@ export default function DashboardScreen() {
         <Dialog visible={visible} onDismiss={() => setVisible(false)}>
           <Dialog.Title>New Study Group</Dialog.Title>
           <Dialog.Content>
-            <TextInput label="Group Name" value={newGroup.name} onChangeText={(text) => setNewGroup(prev => ({ ...prev, name: text }))} style={styles.input} />
-            <TextInput label="Description" value={newGroup.description} onChangeText={(text) => setNewGroup(prev => ({ ...prev, description: text }))} multiline style={styles.input} />
-            <TextInput label="Topics (comma-separated)" value={newGroup.topics} onChangeText={(text) => setNewGroup(prev => ({ ...prev, topics: text }))} style={styles.input} />
-            <Button icon="image" mode="outlined" onPress={pickImage} style={{ marginTop: 10 }}>
+            <TextInput
+              label="Group Name"
+              value={newGroup.name}
+              onChangeText={(text) => setNewGroup(prev => ({ ...prev, name: text }))}
+              style={styles.input}
+            />
+            <TextInput
+              label="Description"
+              value={newGroup.description}
+              onChangeText={(text) => setNewGroup(prev => ({ ...prev, description: text }))}
+              multiline
+              style={styles.input}
+            />
+            <TextInput
+              label="Topics (comma-separated)"
+              value={newGroup.topics}
+              onChangeText={(text) => setNewGroup(prev => ({ ...prev, topics: text }))}
+              style={styles.input}
+            />
+            <Button
+              icon="image"
+              mode="outlined"
+              onPress={pickImage}
+              style={{ marginTop: 10 }}
+            >
               {newGroup.image ? 'Change Image' : 'Pick Image'}
             </Button>
             {newGroup.image && (
-              <Image source={{ uri: newGroup.image }} style={styles.previewImage} />
+              <Image
+                source={{ uri: newGroup.image }}
+                style={styles.previewImage}
+              />
             )}
           </Dialog.Content>
           <Dialog.Actions>
@@ -219,7 +252,10 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   title: { fontWeight: 'bold', marginBottom: 16 },
-  input: { marginBottom: 12 },
+  input: {
+    marginBottom: 12,
+    backgroundColor: 'white',
+  },
   categoryScroll: { marginBottom: 12 },
   chip: { marginRight: 8 },
   createGroupButton: {
@@ -240,5 +276,10 @@ const styles = StyleSheet.create({
   cardImage: { width: '100%', height: 150 },
   cardBody: { padding: 12 },
   topicChip: { marginRight: 5, marginTop: 5 },
-  previewImage: { marginTop: 10, width: '100%', height: 150, borderRadius: 8 },
+  previewImage: {
+    marginTop: 10,
+    width: '100%',
+    height: 150,
+    borderRadius: 8,
+  },
 });

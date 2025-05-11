@@ -8,6 +8,7 @@ const navItems = [
   { text: 'Messages', icon: 'message', path: 'Messages' },
   { text: 'Calendar', icon: 'date-range', path: 'Calendar' },
   { text: 'Notifications', icon: 'notifications', path: 'Notifications' },
+  { text: 'Settings', icon: 'settings', path: 'Settings' },
 ];
 
 export default function CustomDrawerContent({ navigation }) {

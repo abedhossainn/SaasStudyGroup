@@ -9,8 +9,8 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { CLOUDINARY_CONFIG } from '@frontend/src/config/cloudinaryConfig';
 import { notifyGroupMembers } from './notificationService';
+import { uploadImageToCloudinary } from './cloudinaryService';
 
 const API_URL = 'http://localhost:5000/api';
 
@@ -20,47 +20,11 @@ export const getGroups = async () => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-/**
- * Uploads an image to Cloudinary directly from the frontend
- * @param {File} file The image file to upload
- * @param {string} folder Optional folder path in Cloudinary
- * @returns {Promise<string>} The secure URL of the uploaded image
- */
-export const uploadImageToCloudinary = async (file, folder = 'study-group-uploads') => {
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
-    
-    if (folder) {
-      formData.append('folder', folder);
-    }
-    
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CONFIG.cloudName}/image/upload`,
-      {
-        method: 'POST',
-        body: formData
-      }
-      
-    );
-
-    if (!response.data || !response.data.secure_url) {
-      throw new Error('Invalid response from Cloudinary');
-    }
-    
-    return response.data.secure_url;
-  } catch (error) {
-    console.error('Error uploading to Cloudinary:', error);
-    throw new Error(error.response?.data?.error?.message || 'Failed to upload image');
-  }
-};
-
 // ➕ Create new group
 export const createGroup = async (groupData) => {
   let imageUrl = '/test_wallpaper.png';
 
-  if (groupData.image instanceof File) {
+  if (groupData.image) {
     try {
       imageUrl = await uploadImageToCloudinary(groupData.image, 'group-images');
     } catch (error) {
@@ -69,7 +33,6 @@ export const createGroup = async (groupData) => {
     }
   }
   
-  // Check if creatorId field exists and is not undefined
   if (!groupData.creatorId) {
     throw new Error('User ID is required to create a group. Please ensure you are logged in.');
   }
@@ -136,94 +99,24 @@ export const updateGroup = async (groupId, updateData, userId) => {
 
 // 👥 Join group and trigger a notification
 export const joinGroup = async (groupId, userId) => {
-  console.log(`Join group function called with groupId: ${groupId}, userId: ${userId}`);
-  
-  // Get the group document
   const groupRef = doc(db, 'groups', groupId);
-  const groupSnap = await getDoc(groupRef);
+  const groupDoc = await getDoc(groupRef);
   
-  if (!groupSnap.exists()) {
-    console.error('Group not found:', groupId);
+  if (!groupDoc.exists()) {
     throw new Error('Group not found');
   }
 
-  const groupData = groupSnap.data();
+  const groupData = groupDoc.data();
   const members = groupData.members || [];
   
-  console.log('Current group members:', members);
-  
   if (members.includes(userId)) {
-    console.log('User is already a member');
-    throw new Error('Already a member');
+    throw new Error('You are already a member of this group');
   }
 
-  if (groupData.maxMembers && members.length >= groupData.maxMembers) {
-    console.log('Group has reached maximum members:', members.length);
-    throw new Error('Group has reached the maximum number of members');
-  }
-
-  // Update the group document with the new member
-  const updatedMembers = [...members, userId];
-  console.log('Updating group with new members array:', updatedMembers);
-  
-  try {
-    await updateDoc(groupRef, {
-      members: updatedMembers,
-      updatedAt: serverTimestamp()
-    });
-    
-    // Also update the user's profile to include this group
-    try {
-      const userRef = doc(db, 'users', userId);
-      const userSnap = await getDoc(userRef);
-      
-      if (userSnap.exists()) {
-        const userData = userSnap.data();
-        const userGroups = userData.groups || [];
-        
-        if (!userGroups.includes(groupId)) {
-          console.log('Adding group to user\'s groups array');
-          await updateDoc(userRef, {
-            groups: [...userGroups, groupId],
-            updatedAt: serverTimestamp()
-          });
-        }
-      }
-    } catch (userError) {
-      console.error('Error updating user document, but group was updated:', userError);
-      // Don't fail the whole operation if user update fails
-    }
-    
-    // Add a notification - Fixed to use createdBy instead of creatorId
-    try {
-      console.log('Group data for notification:', groupData);
-      
-      // Make sure we have a valid recipient for the notification
-      if (groupData.createdBy) {
-        await addDoc(collection(db, 'notifications'), {
-          type: 'group_join',
-          content: `User ${userId} joined group ${groupData.name}`,
-          userId: groupData.createdBy, // Send notification to group creator using the correct field name
-          senderUserId: userId,
-          groupId,
-          timestamp: serverTimestamp(),
-          read: false
-        });
-        console.log('Successfully created notification for group creator:', groupData.createdBy);
-      } else {
-        console.warn('Cannot create notification: Missing group creator ID');
-      }
-    } catch (notificationError) {
-      console.error('Error creating notification, but user was added to group:', notificationError);
-      // Don't fail the whole operation if notification creation fails
-    }
-    
-    console.log('Successfully joined group');
-    return true;
-  } catch (error) {
-    console.error('Error updating group document:', error);
-    throw error;
-  }
+  await updateDoc(groupRef, {
+    members: [...members, userId],
+    lastActive: serverTimestamp()
+  });
 };
 
 // ❌ Delete group, its messages, and documents
